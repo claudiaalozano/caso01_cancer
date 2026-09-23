@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- Caso BreastDCEDL ----
+# Dataset (CC BY-NC 4.0): se descarga con descarga_datos.py, nunca se sube a Git
+data/
+# Validacion privada del profesor y cualquier etiqueta privada: nunca al repo
+*privad*

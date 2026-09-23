@@ -1,0 +1,9 @@
+# Auditoria y analisis
+numpy
+pandas
+pillow
+matplotlib
+scikit-learn
+requests
+# Entrenamiento (instalar torch segun tu GPU: https://pytorch.org/get-started/locally/)
+# torch

@@ -1,0 +1,78 @@
+{
+  "experimento": "ponderada_f0_rapido",
+  "fecha": "2026-10-07T12:57:25",
+  "arquitectura": {
+    "canales": [
+      16,
+      32,
+      64,
+      128,
+      128,
+      128
+    ],
+    "dropout": 0.3,
+    "entrada": [
+      3,
+      256,
+      256
+    ],
+    "parametros": 393233
+  },
+  "entrenamiento": {
+    "epocas_max": 10,
+    "epocas_realizadas": 9,
+    "mejor_epoca": 4,
+    "paciencia": 5,
+    "criterio_parada": "AUC por paciente en validación",
+    "perdida": "ponderada",
+    "pos_weight": 1.0,
+    "optimizador": "AdamW",
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch": 32,
+    "semilla": 42,
+    "fold_validacion": 0,
+    "aumento": "AumentoGeometrico(p_volteo=0.5, max_grados=10.0, max_desplazamiento=8)",
+    "normalizacion": "PNG / 255, apilado PRE, EARLY, LATE",
+    "modo_rapido": true,
+    "agregacion_paciente": "media"
+  },
+  "validacion_mejor_epoca": {
+    "umbral_0.5": {
+      "auc": 0.8,
+      "sensibilidad": 1.0,
+      "especificidad": 0.0,
+      "accuracy": 0.5,
+      "VP": 5,
+      "VN": 0,
+      "FP": 5,
+      "FN": 0
+    },
+    "umbral_youden": 0.9998,
+    "con_umbral_youden": {
+      "auc": 0.8,
+      "sensibilidad": 0.6,
+      "especificidad": 1.0,
+      "accuracy": 0.8,
+      "VP": 3,
+      "VN": 5,
+      "FP": 0,
+      "FN": 2
+    }
+  },
+  "entorno": {
+    "dispositivo": "cpu",
+    "gpu": null,
+    "memoria_max_MB": null,
+    "python": "3.12.3",
+    "torch": "2.14.0+cpu",
+    "sistema": "Windows-11-10.0.26200-SP0",
+    "segundos_por_epoca_medio": 20.5,
+    "segundos_total": 184.8
+  },
+  "pesos": {
+    "ruta": "models\\ponderada_f0_rapido.pt",
+    "sha256": "eaf507715e774f1fd5d5bd979817c7c1f72ce3ba0de31464b0a314aff55cb018"
+  },
+  "test": null
+}

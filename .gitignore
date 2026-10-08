@@ -225,3 +225,4 @@ data/breastdcedl
 
 models/
 *.pt
+*.npy

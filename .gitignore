@@ -219,6 +219,9 @@ __marimo__/
 
 # ---- Caso BreastDCEDL ----
 # Dataset (CC BY-NC 4.0): se descarga con descarga_datos.py, nunca se sube a Git
-data/
+data/breastdcedl
 
 *privad*
+
+models/
+*.pt

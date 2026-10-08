@@ -1,6 +1,6 @@
 {
-  "experimento": "ponderada_f0",
-  "fecha": "2026-10-08T05:54:33",
+  "experimento": "ponderada_wd1e-3~",
+  "fecha": "2026-10-08T06:16:18",
   "arquitectura": {
     "canales": [
       16,
@@ -19,16 +19,16 @@
     "parametros": 393233
   },
   "entrenamiento": {
-    "epocas_max": 10,
-    "epocas_realizadas": 6,
-    "mejor_epoca": 1,
-    "paciencia": 5,
+    "epocas_max": 30,
+    "epocas_realizadas": 13,
+    "mejor_epoca": 3,
+    "paciencia": 10,
     "criterio_parada": "AUC por paciente en validación",
     "perdida": "ponderada",
     "pos_weight": 2.4002,
     "optimizador": "AdamW",
     "lr": 0.001,
-    "weight_decay": 0.0001,
+    "weight_decay": 0.001,
     "batch": 32,
     "semilla": 42,
     "fold_validacion": 0,
@@ -39,25 +39,25 @@
   },
   "validacion_mejor_epoca": {
     "umbral_0.5": {
-      "auc": 0.6104,
-      "sensibilidad": 0.1562,
-      "especificidad": 0.8903,
-      "accuracy": 0.6758,
-      "VP": 10,
-      "VN": 138,
-      "FP": 17,
-      "FN": 54
+      "auc": 0.6039,
+      "sensibilidad": 0.125,
+      "especificidad": 0.9097,
+      "accuracy": 0.6804,
+      "VP": 8,
+      "VN": 141,
+      "FP": 14,
+      "FN": 56
     },
-    "umbral_youden": 0.4474,
+    "umbral_youden": 0.3724,
     "con_umbral_youden": {
-      "auc": 0.6104,
-      "sensibilidad": 0.6562,
-      "especificidad": 0.5742,
-      "accuracy": 0.5982,
-      "VP": 42,
-      "VN": 89,
-      "FP": 66,
-      "FN": 22
+      "auc": 0.6039,
+      "sensibilidad": 0.6094,
+      "especificidad": 0.6194,
+      "accuracy": 0.6164,
+      "VP": 39,
+      "VN": 96,
+      "FP": 59,
+      "FN": 25
     }
   },
   "entorno": {
@@ -68,11 +68,11 @@
     "torch": "2.14.1+rocm7.14",
     "sistema": "Linux-7.0.0-34-generic-x86_64-desconocido-with-glibc2.43",
     "segundos_por_epoca_medio": 27.7,
-    "segundos_total": 166.2
+    "segundos_total": 360.1
   },
   "pesos": {
-    "ruta": "models/ponderada_f0.pt",
-    "sha256": "15b72f78870e0ade53ae64699fdedb0f783b20c693033966efa02e80986c5188"
+    "ruta": "models/ponderada_wd1e-3~.pt",
+    "sha256": "320ffc45338d6bbf8df7f707c3576fcbbb28686c42af217def2cff4bdc93cbff"
   },
   "test": null
 }

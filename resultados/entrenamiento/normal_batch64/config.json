@@ -1,6 +1,6 @@
 {
-  "experimento": "ponderada_f0",
-  "fecha": "2026-10-08T05:54:33",
+  "experimento": "normal_batch64",
+  "fecha": "2026-10-08T06:58:13",
   "arquitectura": {
     "canales": [
       16,
@@ -24,12 +24,12 @@
     "mejor_epoca": 1,
     "paciencia": 5,
     "criterio_parada": "AUC por paciente en validación",
-    "perdida": "ponderada",
-    "pos_weight": 2.4002,
+    "perdida": "normal",
+    "pos_weight": null,
     "optimizador": "AdamW",
     "lr": 0.001,
     "weight_decay": 0.0001,
-    "batch": 32,
+    "batch": 64,
     "semilla": 42,
     "fold_validacion": 0,
     "aumento": "AumentoGeometrico(p_volteo=0.5, max_grados=10.0, max_desplazamiento=8)",
@@ -39,40 +39,40 @@
   },
   "validacion_mejor_epoca": {
     "umbral_0.5": {
-      "auc": 0.6104,
-      "sensibilidad": 0.1562,
-      "especificidad": 0.8903,
-      "accuracy": 0.6758,
-      "VP": 10,
-      "VN": 138,
-      "FP": 17,
-      "FN": 54
+      "auc": 0.5888,
+      "sensibilidad": 0.0,
+      "especificidad": 1.0,
+      "accuracy": 0.7078,
+      "VP": 0,
+      "VN": 155,
+      "FP": 0,
+      "FN": 64
     },
-    "umbral_youden": 0.4474,
+    "umbral_youden": 0.1361,
     "con_umbral_youden": {
-      "auc": 0.6104,
-      "sensibilidad": 0.6562,
-      "especificidad": 0.5742,
-      "accuracy": 0.5982,
-      "VP": 42,
-      "VN": 89,
-      "FP": 66,
-      "FN": 22
+      "auc": 0.5888,
+      "sensibilidad": 0.7656,
+      "especificidad": 0.4387,
+      "accuracy": 0.5342,
+      "VP": 49,
+      "VN": 68,
+      "FP": 87,
+      "FN": 15
     }
   },
   "entorno": {
     "dispositivo": "cuda",
     "gpu": "AMD Radeon RX 6700 XT",
-    "memoria_max_MB": 774,
+    "memoria_max_MB": 1478,
     "python": "3.12.14",
     "torch": "2.14.1+rocm7.14",
     "sistema": "Linux-7.0.0-34-generic-x86_64-desconocido-with-glibc2.43",
-    "segundos_por_epoca_medio": 27.7,
-    "segundos_total": 166.2
+    "segundos_por_epoca_medio": 315.7,
+    "segundos_total": 1894.2
   },
   "pesos": {
-    "ruta": "models/ponderada_f0.pt",
-    "sha256": "15b72f78870e0ade53ae64699fdedb0f783b20c693033966efa02e80986c5188"
+    "ruta": "models/normal_batch64.pt",
+    "sha256": "1adcbce30a25aee8e96eab3f1994f8ee2f23f2656ce4c211fbd2b76d28b10749"
   },
   "test": null
 }

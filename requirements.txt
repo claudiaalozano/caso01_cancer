@@ -1,5 +1,4 @@
 # Auditoria y analisis
-numpy
 pandas
 pillow
 matplotlib

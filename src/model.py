@@ -5,8 +5,7 @@ Este archivo contiene TODO el modelo:
   1. ARQUITECTURA    la red CNNpCR (6 etapas Conv-BN-ReLU-MaxPool + GAP + Dropout + Linear)
   2. VERIFICACIÓN    paso 6 del método de clase: A) formas, B) sobreajustar 10 cortes
   3. ENTRENAMIENTO   épocas con validación por paciente, early stopping, mejor época
-  4. TEST            evaluación final UNA sola vez (con --test), con la mejor época y el
-                     umbral elegidos en validación; test nunca decide nada
+  4. TEST            evaluación final UNA sola vez (con --test), con la mejor época y el umbral elegidos en validación; test nunca decide nada
 
 El preprocesado (carga de PNG, /255, aumento, DataLoaders) está en preprocessing.py,
 porque también lo usa la aplicación web y tiene que ser idéntico.
@@ -71,8 +70,7 @@ ENTRADA = (3, 256, 256)                   # PRE, EARLY, LATE x 256 x 256
 def etapa(c_in: int, c_out: int) -> nn.Sequential:
     """Una etapa: entra c_in x H x W, sale c_out x H/2 x W/2.
 
-    - Conv 3x3 con padding 1: conserva el tamaño; sin sesgo porque BatchNorm
-      lo sustituye con su parámetro beta.
+    - Conv 3x3 con padding 1: conserva el tamaño; sin sesgo porque BatchNorm lo sustituye con su parámetro beta.
     - BatchNorm: estabiliza el entrenamiento (media 0, varianza 1 por canal).
     - ReLU: no linealidad; sin ella, apilar capas equivaldría a una sola.
     - MaxPool 2x2: divide alto y ancho entre 2 y tolera pequeños desplazamientos.

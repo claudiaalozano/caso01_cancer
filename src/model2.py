@@ -1,32 +1,22 @@
 #!/usr/bin/env python3
-"""CNN desde cero para predecir pCR con DCE-MRI (caso BreastDCEDL): modelo, entrenamiento y test.
+"""CNN de cuatro etapas para predecir pCR.
 
-Este archivo contiene TODO el modelo:
-  1. ARQUITECTURA    la red CNNpCR (6 etapas Conv-BN-ReLU-MaxPool + GAP + Dropout + Linear)
-  2. VERIFICACIÓN    paso 6 del método de clase: A) formas, B) sobreajustar 10 cortes
-  3. ENTRENAMIENTO   épocas con validación por paciente, early stopping, mejor época
-  4. TEST            evaluación final UNA sola vez (con --test), con la mejor época y el umbral elegidos en validación; test nunca decide nada
+Entrada:
+    PRE, EARLY y LATE, o representación de realce.
 
-El preprocesado (carga de PNG, /255, aumento, DataLoaders) está en preprocessing.py,
-porque también lo usa la aplicación web y tiene que ser idéntico.
+Arquitectura:
+    Etapa 1: Conv-BN-ReLU                 -> 16 x 256 x 256
+    Etapa 2: Conv-BN-ReLU-MaxPool         -> 32 x 128 x 128
+    Etapa 3: Conv-BN-ReLU-MaxPool         -> 64 x 64 x 64
+    Etapa 4: Conv-BN-ReLU-Spatial-MaxPool -> 128 x 32 x 32
+    GAP-Flatten-Dropout-Linear           -> 1 logit
 
-Diseño (método de 6 pasos de clase):
-  entrada 3x256x256 (PRE, EARLY, LATE) -> 6 etapas (256 -> 4) con canales
-  16-32-64-128-128-128 -> Global Average Pooling -> Dropout 0,3 -> Linear(128, 1) = 1 logit.
-  ~393 K parámetros. Sin pesos preentrenados.
+La atención espacial actúa antes del último pooling, en mapas 64x64.
+No garantiza localizar el tumor.
 
-Al entrenar guarda models/<nombre>.pt y en resultados/entrenamiento/<nombre>/:
-  config.json (hiperparámetros, entorno, tiempos, métricas, SHA-256 de los pesos),
-  historial.csv, curvas.png, val_pacientes.csv y, con --test,
-  matriz_confusion_test.png y test_pacientes.csv.
-
-Uso, desde la raíz del repositorio:
-
-    python src/model.py --verificar           # resumen de la red + verificaciones A y B
-    python src/model.py --rapido              # prueba en CPU: pocos pacientes, 10 épocas
-    python src/model.py                       # entrenamiento real (10 épocas)
-    python src/model.py --perdida normal      # comparar con la pérdida sin ponderar
-    python src/model.py --test                # entrena y, al final, evalúa en test
+Validación por paciente: media de probabilidades de sus cortes.
+Mejor época y early stopping según AUC de validación.
+Test solo cuando se especifica --test.
 """
 
 from __future__ import annotations
@@ -45,6 +35,7 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -53,520 +44,1320 @@ import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import preprocessing as pp                       # noqa: E402
+import preprocessing as pp
 
 REPO = pp.REPO
 
-# Valores por defecto de la arquitectura
-CANALES = (16, 32, 64, 128, 128, 128)     # filtros de cada una de las 6 etapas
+CANALES = (16, 32, 64, 128)
 DROPOUT = 0.3
-ENTRADA = (3, 256, 256)                   # PRE, EARLY, LATE x 256 x 256
+ENTRADA = (3, 256, 256)
 
 
-# =========================================================================== #
-# 1. ARQUITECTURA
-# =========================================================================== #
+# =====================================================================
+# ATENCIÓN ESPACIAL
+# =====================================================================
 
-def etapa(c_in: int, c_out: int) -> nn.Sequential:
-    """Una etapa: entra c_in x H x W, sale c_out x H/2 x W/2.
+class SpatialAttention(nn.Module):
+    """Aprende una máscara espacial compartida por los canales."""
 
-    - Conv 3x3 con padding 1: conserva el tamaño; sin sesgo porque BatchNorm lo sustituye con su parámetro beta.
-    - BatchNorm: estabiliza el entrenamiento (media 0, varianza 1 por canal).
-    - ReLU: no linealidad; sin ella, apilar capas equivaldría a una sola.
-    - MaxPool 2x2: divide alto y ancho entre 2 y tolera pequeños desplazamientos.
-    El orden Conv -> BN -> ReLU -> Pool es el canónico visto en clase.
-    """
-    return nn.Sequential(
-        nn.Conv2d(c_in, c_out, kernel_size=3, padding=1, bias=False),
+    def __init__(self, kernel_size: int = 7):
+        super().__init__()
+
+        if kernel_size not in (3, 7):
+            raise ValueError("kernel_size debe ser 3 o 7")
+
+        self.conv = nn.Conv2d(
+            2,
+            1,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            bias=False,
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def calcular_mascara(self, x: torch.Tensor) -> torch.Tensor:
+        media = torch.mean(x, dim=1, keepdim=True)
+        maximo = torch.amax(x, dim=1, keepdim=True)
+        resumen = torch.cat((media, maximo), dim=1)
+
+        return self.sigmoid(self.conv(resumen))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.calcular_mascara(x)
+
+
+# =====================================================================
+# ARQUITECTURA
+# =====================================================================
+
+def etapa(
+    c_in: int,
+    c_out: int,
+    pooling: bool,
+    atencion: bool = False,
+) -> nn.Sequential:
+    capas = [
+        nn.Conv2d(
+            c_in,
+            c_out,
+            kernel_size=3,
+            padding=1,
+            bias=False,
+        ),
         nn.BatchNorm2d(c_out),
         nn.ReLU(inplace=True),
-        nn.MaxPool2d(kernel_size=2, stride=2),
+    ]
+
+    if atencion:
+        capas.append(SpatialAttention(kernel_size=7))
+
+    if pooling:
+        capas.append(
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+
+    return nn.Sequential(*capas)
+
+
+def representar_entrada(
+    x: torch.Tensor,
+    representacion: str = "fases",
+) -> torch.Tensor:
+    if x.ndim != 4 or x.shape[1] != 3:
+        raise ValueError(
+            "Se esperaba [N, 3, H, W] en orden PRE, EARLY, LATE"
+        )
+
+    if representacion == "fases":
+        return x
+
+    if representacion == "realce":
+        pre = x[:, 0]
+        early = x[:, 1]
+        late = x[:, 2]
+
+        return torch.stack(
+            (pre, early - pre, late - early),
+            dim=1,
+        )
+
+    raise ValueError(
+        f"Representación desconocida: {representacion}"
     )
 
 
-def representar_entrada(x: torch.Tensor, representacion: str = "fases") -> torch.Tensor:
-    """Recibe PRE/EARLY/LATE escalados por 255; conserva las diferencias negativas.
-
-    La transformación se incluye en el modelo para usarla también en inferencia.
-    Es una adaptación experimental propia inspirada en imágenes de sustracción.
-    """
-    if x.ndim != 4 or x.shape[1] != 3:
-        raise ValueError("Se esperaba entrada [N, 3, H, W] en orden PRE, EARLY, LATE")
-    if representacion == "fases":
-        return x
-    if representacion == "realce":
-        pre, early, late = x[:, 0], x[:, 1], x[:, 2]
-        return torch.stack((pre, early - pre, late - early), dim=1)
-    raise ValueError(f"Representación desconocida: {representacion}")
-
-
 class CNNpCR(nn.Module):
-    """CNN 2D desde cero. Devuelve un logit por imagen: [N, 3, 256, 256] -> [N, 1].
-
-    La sigmoide NO está dentro de la red: BCEWithLogitsLoss la aplica al entrenar
-    (más estable numéricamente) y en inferencia se hace torch.sigmoid(logit).
-    """
-
-    def __init__(self, canales: tuple[int, ...] = CANALES, dropout: float = DROPOUT, representacion: str = "fases"):
+    def __init__(
+        self,
+        canales: tuple[int, ...] = CANALES,
+        dropout: float = DROPOUT,
+        representacion: str = "fases",
+        atencion: str = "spatial",
+    ):
         super().__init__()
+
+        if len(canales) != 4 or any(c < 1 for c in canales):
+            raise ValueError(
+                "Se necesitan cuatro cantidades de canales positivas"
+            )
+
+        if representacion not in ("fases", "realce"):
+            raise ValueError(
+                "representacion debe ser fases o realce"
+            )
+
+        if atencion not in ("ninguna", "spatial"):
+            raise ValueError(
+                "atencion debe ser ninguna o spatial"
+            )
+
+        if not 0 <= dropout < 1:
+            raise ValueError("dropout debe estar en [0, 1)")
+
         self.canales = tuple(canales)
         self.dropout = dropout
-        if representacion not in ("fases", "realce"):
-            raise ValueError("representacion debe ser fases o realce")
         self.representacion = representacion
+        self.atencion = atencion
 
-        # Extractor de características: 3x256x256 -> 128x4x4
-        capas, c_in = [], ENTRADA[0]          # 3 canales = 3 fases DCE (no son colores)
-        for c_out in canales:
-            capas.append(etapa(c_in, c_out))
+        capas = []
+        c_in = ENTRADA[0]
+
+        for numero, c_out in enumerate(self.canales, start=1):
+            capas.append(
+                etapa(
+                    c_in,
+                    c_out,
+                    pooling=numero > 1,
+                    atencion=(
+                        atencion == "spatial" and numero == 4
+                    ),
+                )
+            )
             c_in = c_out
+
         self.extractor = nn.Sequential(*capas)
 
-        # Cabeza: 128x4x4 -> 128 -> 1 logit
         self.cabeza = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),          # Global Average Pooling: media de cada mapa
+            nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Dropout(dropout),              # solo actúa en model.train()
+            nn.Dropout(dropout),
             nn.Linear(c_in, 1),
         )
+
         self._inicializar()
 
     def _inicializar(self):
-        """Kaiming (He) para las convoluciones: pensada para ReLU, mantiene estable
-        la varianza de las activaciones a lo largo de las 6 etapas."""
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)       # gamma = 1
-                nn.init.zeros_(m.bias)        # beta = 0
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, mean=0.0, std=0.01)
-                nn.init.zeros_(m.bias)
+        for modulo in self.modules():
+            if isinstance(modulo, nn.Conv2d):
+                nn.init.kaiming_normal_(
+                    modulo.weight,
+                    mode="fan_out",
+                    nonlinearity="relu",
+                )
+
+            elif isinstance(modulo, nn.BatchNorm2d):
+                nn.init.ones_(modulo.weight)
+                nn.init.zeros_(modulo.bias)
+
+            elif isinstance(modulo, nn.Linear):
+                nn.init.normal_(
+                    modulo.weight,
+                    mean=0.0,
+                    std=0.01,
+                )
+                nn.init.zeros_(modulo.bias)
+
+        for modulo in self.modules():
+            if isinstance(modulo, SpatialAttention):
+                nn.init.xavier_uniform_(modulo.conv.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.cabeza(self.extractor(representar_entrada(x, self.representacion)))
+        x = representar_entrada(x, self.representacion)
+        return self.cabeza(self.extractor(x))
 
     def config(self) -> dict:
-        """Hiperparámetros de arquitectura, para guardarlos junto a los pesos."""
-        return {"canales": list(self.canales), "dropout": self.dropout,
-                "entrada": list(ENTRADA), "parametros": contar_parametros(self),
-                "representacion": self.representacion,
-                "canales_derivados": (["PRE", "EARLY-PRE", "LATE-EARLY"]
-                                      if self.representacion == "realce" else ["PRE", "EARLY", "LATE"])}
+        return {
+            "version": "cuatro_etapas_tres_poolings_v1",
+            "canales": list(self.canales),
+            "dropout": self.dropout,
+            "entrada": list(ENTRADA),
+            "parametros": contar_parametros(self),
+            "etapas": 4,
+            "max_poolings": 3,
+            "pooling_por_etapa": [False, True, True, True],
+            "resolucion_final_hw": [32, 32],
+            "representacion": self.representacion,
+            "canales_derivados": (
+                ["PRE", "EARLY-PRE", "LATE-EARLY"]
+                if self.representacion == "realce"
+                else ["PRE", "EARLY", "LATE"]
+            ),
+            "atencion": self.atencion,
+            "atencion_etapa": (
+                4 if self.atencion == "spatial" else None
+            ),
+            "atencion_resolucion_hw": (
+                [64, 64] if self.atencion == "spatial" else None
+            ),
+            "atencion_kernel": (
+                7 if self.atencion == "spatial" else None
+            ),
+        }
 
 
 def contar_parametros(modelo: nn.Module) -> int:
-    return sum(p.numel() for p in modelo.parameters() if p.requires_grad)
+    return sum(
+        parametro.numel()
+        for parametro in modelo.parameters()
+        if parametro.requires_grad
+    )
 
-
-# --------------------------------------------------------------------------- #
-# Resumen capa a capa (tabla para la diapositiva 3)
-# --------------------------------------------------------------------------- #
 
 def resumen(modelo: CNNpCR) -> None:
-    x = torch.zeros(1, *ENTRADA)
     modelo.eval()
-    print(f"{'Capa':<28}{'Salida':<20}{'Parámetros':>12}   Cuenta")
-    print("-" * 86)
-    print(f"{'Entrada':<28}{' x '.join(map(str, ENTRADA)):<20}{'—':>12}")
-    c_in = ENTRADA[0]
+    x = torch.zeros(1, *ENTRADA)
+
+    print(f"{'Capa':<34}{'Salida':<22}{'Parámetros':>12}")
+    print("-" * 68)
+    print(
+        f"{'Entrada':<34}"
+        f"{' x '.join(map(str, ENTRADA)):<22}"
+    )
+
     with torch.no_grad():
-        for i, bloque in enumerate(modelo.extractor, 1):
-            x = bloque(x)
-            c = x.shape[1]
-            n = contar_parametros(bloque)
-            cuenta = f"3·3·{c_in}·{c} + 2·{c}"
-            print(f"{f'Etapa {i} (Conv-BN-ReLU-Pool)':<28}{' x '.join(map(str, x.shape[1:])):<20}{n:>12,}   {cuenta}")
-            c_in = c
-        gap, _, drop, lineal = modelo.cabeza
-        print(f"{'Global Average Pooling':<28}{str(c_in):<20}{0:>12}")
-        print(f"{f'Dropout (p={drop.p})':<28}{str(c_in):<20}{0:>12}")
-        n = contar_parametros(lineal)
-        print(f"{'Linear':<28}{'1 (logit)':<20}{n:>12,}   {c_in}·1 + 1")
-    print("-" * 86)
-    print(f"{'TOTAL':<48}{contar_parametros(modelo):>12,}")
-    print(f"Campo receptivo final: {campo_receptivo(len(modelo.extractor))} x "
-          f"{campo_receptivo(len(modelo.extractor))} píxeles de la imagen original")
+        for numero, bloque in enumerate(modelo.extractor, start=1):
+            for modulo in bloque:
+                if isinstance(modulo, SpatialAttention):
+                    print(
+                        "  Atención espacial sobre mapas "
+                        f"{x.shape[-2]}x{x.shape[-1]}"
+                    )
+                x = modulo(x)
+
+            forma = " x ".join(map(str, x.shape[1:]))
+            print(
+                f"{f'Etapa {numero}':<34}"
+                f"{forma:<22}"
+                f"{contar_parametros(bloque):>12,}"
+            )
+
+    print(
+        f"{'Cabeza GAP-Dropout-Linear':<34}"
+        f"{'1 logit':<22}"
+        f"{contar_parametros(modelo.cabeza):>12,}"
+    )
+    print("-" * 68)
+    print(f"Total: {contar_parametros(modelo):,} parámetros")
+    print("MaxPooling: 3")
+    print(f"Atención: {modelo.atencion}")
 
 
-def campo_receptivo(n_etapas: int) -> int:
-    """Cada conv 3x3 suma 2·salto; cada MaxPool 2x2 suma 1·salto y duplica el salto."""
-    rf, salto = 1, 1
-    for _ in range(n_etapas):
-        rf += 2 * salto          # conv 3x3
-        rf += 1 * salto          # maxpool 2x2
-        salto *= 2
-    return rf
-
-
-# =========================================================================== #
-# 2. VERIFICACIÓN (paso 6 del método de clase)
-# =========================================================================== #
+# =====================================================================
+# VERIFICACIÓN
+# =====================================================================
 
 def verificar_formas(modelo: CNNpCR) -> None:
-    """A · ¿Las formas cuadran? Si falla aquí, es por dimensiones, no por aprendizaje."""
     modelo.eval()
-    with torch.no_grad():
-        y = modelo(torch.randn(2, *ENTRADA))
-    assert y.shape == (2, 1), f"salida {tuple(y.shape)}, se esperaba (2, 1)"
-    print(f"A) Formas: entrada (2, 3, 256, 256) -> salida {tuple(y.shape)}   OK")
+    formas_atencion = []
+
+    def registrar_forma(modulo, entradas):
+        formas_atencion.append(tuple(entradas[0].shape))
+
+    manejadores = [
+        modulo.register_forward_pre_hook(registrar_forma)
+        for modulo in modelo.modules()
+        if isinstance(modulo, SpatialAttention)
+    ]
+
+    try:
+        with torch.no_grad():
+            x = torch.randn(2, *ENTRADA)
+            representada = representar_entrada(
+                x,
+                modelo.representacion,
+            )
+            caracteristicas = modelo.extractor(representada)
+            salida = modelo.cabeza(caracteristicas)
+
+        assert caracteristicas.shape == (
+            2, modelo.canales[-1], 32, 32
+        )
+        assert salida.shape == (2, 1)
+        assert torch.isfinite(salida).all()
+
+        if modelo.atencion == "spatial":
+            assert formas_atencion == [
+                (2, modelo.canales[-1], 64, 64)
+            ]
+
+        print("A) Salida: (2, 1). OK")
+        print("   Mapas finales: 32x32. OK")
+
+        if modelo.atencion == "spatial":
+            print("   Atención en mapas de 64x64. OK")
+
+    finally:
+        for manejador in manejadores:
+            manejador.remove()
 
 
-def verificar_aprendizaje(semilla: int = 42, pasos: int = 150, representacion: str = "fases") -> None:
-    """B · ¿Es capaz de aprender? Debe MEMORIZAR 10 cortes reales (5 de cada clase).
+def verificar_aprendizaje(
+    semilla: int = 42,
+    pasos: int = 150,
+    representacion: str = "fases",
+    canales: tuple[int, ...] = CANALES,
+    config_espacial=None,
+    atencion: str = "spatial",
+) -> None:
+    """Memoriza 10 cortes; no mide generalización."""
+    fijar_semilla(semilla)
 
-    No mide si el modelo es bueno: solo que modelo + pérdida + optimizador funcionan.
-    Si la pérdida se queda en ~0,69 (= ln 2, el azar en binario), hay un error.
-    """
-    torch.manual_seed(semilla)
-    dispositivo = "cuda" if torch.cuda.is_available() else "cpu"
+    dispositivo = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+
     samples = pp.uc.cargar_samples(pp.RAIZ_DATOS)
-    tr = samples[samples.split == "train"]
-    filas = tr.groupby("pCR").head(5)                      # 5 cortes de cada clase
-    x = torch.stack([pp.a_tensor(pp.cargar_corte_uint8(f)) for f in filas.itertuples()])
-    y = torch.tensor(filas.pCR.values, dtype=torch.float32).unsqueeze(1)
-    x, y = x.to(dispositivo), y.to(dispositivo)
+    filas = (
+        samples[samples.split == "train"]
+        .groupby("pCR")
+        .head(5)
+    )
 
-    modelo = CNNpCR(dropout=0.0, representacion=representacion).to(dispositivo)           # sin dropout: queremos memorizar
-    optimizador = torch.optim.Adam(modelo.parameters(), lr=1e-3)
+    if len(filas) != 10:
+        raise ValueError(
+            "Se necesitan cinco cortes de cada clase"
+        )
+
+    x = torch.stack([
+        pp.a_tensor(
+            pp.cargar_corte_uint8(fila),
+            config_espacial=config_espacial,
+        )
+        for fila in filas.itertuples()
+    ]).to(dispositivo)
+
+    y = torch.tensor(
+        filas.pCR.values,
+        dtype=torch.float32,
+    ).unsqueeze(1).to(dispositivo)
+
+    modelo = CNNpCR(
+        canales=canales,
+        dropout=0.0,
+        representacion=representacion,
+        atencion=atencion,
+    ).to(dispositivo)
+
+    optimizador = torch.optim.Adam(
+        modelo.parameters(),
+        lr=1e-3,
+    )
     criterio = nn.BCEWithLogitsLoss()
 
-    print(f"B) Sobreajustar 10 cortes reales ({dispositivo}):")
-    t0 = time.time()
+    print(f"B) Memorizar 10 cortes ({dispositivo}):")
+
     for paso in range(1, pasos + 1):
         modelo.train()
-        optimizador.zero_grad()                            # PyTorch acumula gradientes
-        perdida = criterio(modelo(x), y)                   # forward + pérdida
-        perdida.backward()                                 # retropropagación
-        optimizador.step()                                 # actualizar pesos
+        optimizador.zero_grad()
+        perdida = criterio(modelo(x), y)
+
+        if not torch.isfinite(perdida):
+            raise RuntimeError("Pérdida no finita")
+
+        perdida.backward()
+        optimizador.step()
+
         if paso in (1, 10, 25, 50, 100) or paso == pasos:
-            print(f"   paso {paso:>3}: pérdida = {perdida.item():.4f}")
+            print(
+                f"   Paso {paso:>3}: pérdida {perdida.item():.4f}"
+            )
 
     modelo.eval()
+
     with torch.no_grad():
         prob = torch.sigmoid(modelo(x))
-    aciertos = int(((prob >= 0.5).float() == y).sum())
-    print(f"   aciertos en esos 10 cortes (modo eval): {aciertos}/10   [{time.time() - t0:.0f} s]")
+
+    aciertos = int(
+        ((prob >= 0.5).float() == y).sum().item()
+    )
+
+    print(f"   Aciertos en modo eval: {aciertos}/10")
+
     if perdida.item() < 0.1 and aciertos >= 9:
-        print("   OK: la red es capaz de aprender (memoriza los 10 cortes).")
+        print("   OK: puede memorizar estos cortes.")
     else:
-        print("   AVISO: no ha memorizado. Revisa modelo, pérdida u optimizador.")
+        print("   No ha memorizado suficientemente.")
 
 
-
-# =========================================================================== #
-# 3. ENTRENAMIENTO
-# =========================================================================== #
-
-# --------------------------------------------------------------------------- #
-# Utilidades: semilla, checksum y métricas por paciente
-# --------------------------------------------------------------------------- #
+# =====================================================================
+# UTILIDADES Y MÉTRICAS
+# =====================================================================
 
 def fijar_semilla(semilla: int) -> None:
-    """Misma semilla en random, numpy y torch: resultados reproducibles."""
     random.seed(semilla)
     np.random.seed(semilla)
     torch.manual_seed(semilla)
-    torch.cuda.manual_seed_all(semilla)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(semilla)
 
 
 def sha256(ruta: Path) -> str:
     h = hashlib.sha256()
-    with open(ruta, "rb") as f:
-        for bloque in iter(lambda: f.read(1 << 20), b""):
+
+    with ruta.open("rb") as fichero:
+        for bloque in iter(
+            lambda: fichero.read(1 << 20),
+            b"",
+        ):
             h.update(bloque)
+
     return h.hexdigest()
 
 
-def metricas_paciente(prob_cortes: np.ndarray, filas: pd.DataFrame, umbral: float = 0.5) -> tuple[dict, pd.DataFrame]:
-    """Agrega por paciente (media de sus cortes) y calcula las métricas.
+def limpiar_json(valor):
+    if isinstance(valor, dict):
+        return {
+            clave: limpiar_json(dato)
+            for clave, dato in valor.items()
+        }
 
-    pCR es una propiedad de la paciente, no del corte: la unidad de evaluación es la paciente.
-    """
-    tabla = (pd.DataFrame({"patient_id": filas.patient_id.values, "prob": prob_cortes,
-                           "pCR": filas.pCR.values})
-             .groupby("patient_id").agg(prob=("prob", "mean"), pCR=("pCR", "first")))
-    y, p = tabla.pCR.values, tabla.prob.values
+    if isinstance(valor, (list, tuple)):
+        return [limpiar_json(dato) for dato in valor]
+
+    if isinstance(valor, (float, np.floating)):
+        return (
+            round(float(valor), 6)
+            if np.isfinite(valor) else None
+        )
+
+    if isinstance(valor, np.integer):
+        return int(valor)
+
+    return valor
+
+
+def metricas_paciente(
+    prob_cortes: np.ndarray,
+    filas: pd.DataFrame,
+    umbral: float = 0.5,
+) -> tuple[dict, pd.DataFrame]:
+    prob_cortes = np.asarray(prob_cortes).reshape(-1)
+
+    if len(prob_cortes) != len(filas):
+        raise ValueError(
+            "No coincide el número de probabilidades y cortes"
+        )
+
+    datos = pd.DataFrame({
+        "patient_id": filas.patient_id.values,
+        "prob": prob_cortes,
+        "pCR": filas.pCR.values,
+    })
+
+    if datos.empty:
+        raise ValueError("No hay pacientes para evaluar")
+
+    if not np.isfinite(prob_cortes).all():
+        raise ValueError("Probabilidades no finitas")
+
+    if not datos.pCR.isin([0, 1]).all():
+        raise ValueError("Las etiquetas deben ser 0 o 1")
+
+    if (datos.groupby("patient_id").pCR.nunique() > 1).any():
+        raise ValueError(
+            "Una paciente tiene etiquetas contradictorias"
+        )
+
+    tabla = datos.groupby("patient_id").agg(
+        prob=("prob", "mean"),
+        pCR=("pCR", "first"),
+    )
+
+    y = tabla.pCR.values
+    p = tabla.prob.values
     pred = (p >= umbral).astype(int)
-    vp, vn = int(((pred == 1) & (y == 1)).sum()), int(((pred == 0) & (y == 0)).sum())
-    fp, fn = int(((pred == 1) & (y == 0)).sum()), int(((pred == 0) & (y == 1)).sum())
-    div = lambda a, b: a / b if b else float("nan")
-    auc = float(roc_auc_score(y, p)) if len(set(y)) == 2 else float("nan")
-    return {"auc": auc, "sensibilidad": div(vp, vp + fn), "especificidad": div(vn, vn + fp),
-            "accuracy": div(vp + vn, len(y)), "VP": vp, "VN": vn, "FP": fp, "FN": fn}, tabla
+
+    vp = int(((pred == 1) & (y == 1)).sum())
+    vn = int(((pred == 0) & (y == 0)).sum())
+    fp = int(((pred == 1) & (y == 0)).sum())
+    fn = int(((pred == 0) & (y == 1)).sum())
+
+    def dividir(a, b):
+        return a / b if b else float("nan")
+
+    recall = dividir(vp, vp + fn)
+
+    return {
+        "auc": (
+            float(roc_auc_score(y, p))
+            if len(np.unique(y)) == 2
+            else float("nan")
+        ),
+        "sensibilidad": recall,
+        "recall": recall,
+        "precision": dividir(vp, vp + fp),
+        "especificidad": dividir(vn, vn + fp),
+        "accuracy": dividir(vp + vn, len(y)),
+        "VP": vp,
+        "VN": vn,
+        "FP": fp,
+        "FN": fn,
+    }, tabla
 
 
 def umbral_youden(tabla: pd.DataFrame) -> float:
-    """Umbral que maximiza sensibilidad + especificidad - 1 en VALIDACIÓN (nunca en test)."""
-    y, p = tabla.pCR.values, tabla.prob.values
-    mejor, u_mejor = -1.0, 0.5
-    for u in np.unique(p):
-        pred = p >= u
-        sens = (pred & (y == 1)).sum() / max(1, (y == 1).sum())
-        esp = (~pred & (y == 0)).sum() / max(1, (y == 0).sum())
-        if sens + esp - 1 > mejor:
-            mejor, u_mejor = sens + esp - 1, float(u)
-    return u_mejor
+    """Selecciona el umbral exclusivamente en validación."""
+    y = tabla.pCR.values
+    p = tabla.prob.values
+
+    if len(np.unique(y)) != 2:
+        raise ValueError(
+            "Youden necesita ambas clases en validación"
+        )
+
+    candidatos = np.r_[
+        np.nextafter(p.max(), np.inf),
+        np.unique(p),
+    ]
+
+    mejor_j = -np.inf
+    mejor_umbral = 0.5
+
+    for umbral in candidatos:
+        pred = p >= umbral
+
+        sens = (
+            (pred & (y == 1)).sum() / (y == 1).sum()
+        )
+        esp = (
+            (~pred & (y == 0)).sum() / (y == 0).sum()
+        )
+
+        j = sens + esp - 1
+
+        if j > mejor_j:
+            mejor_j = j
+            mejor_umbral = float(umbral)
+
+    return mejor_umbral
 
 
-# --------------------------------------------------------------------------- #
-# Una época de entrenamiento y la predicción
-# --------------------------------------------------------------------------- #
+# =====================================================================
+# ENTRENAMIENTO Y PREDICCIÓN
+# =====================================================================
 
-def entrenar_epoca(modelo, dl, criterio, optimizador, dispositivo) -> float:
-    modelo.train()                                   # activa dropout y BatchNorm en modo lote
+def entrenar_epoca(
+    modelo,
+    dl,
+    criterio,
+    optimizador,
+    dispositivo,
+) -> float:
+    modelo.train()
     total, n = 0.0, 0
+
     for x, y in dl:
-        x, y = x.to(dispositivo, non_blocking=True), y.to(dispositivo).unsqueeze(1)
-        optimizador.zero_grad()                      # PyTorch acumula gradientes: hay que borrarlos
-        perdida = criterio(modelo(x), y)             # forward + pérdida
-        perdida.backward()                           # retropropagación
-        optimizador.step()                           # actualizar pesos
+        x = x.to(dispositivo, non_blocking=True)
+        y = y.to(dispositivo).unsqueeze(1)
+
+        optimizador.zero_grad()
+        perdida = criterio(modelo(x), y)
+
+        if not torch.isfinite(perdida):
+            raise RuntimeError(
+                "Pérdida de entrenamiento no finita"
+            )
+
+        perdida.backward()
+        optimizador.step()
+
         total += perdida.item() * len(y)
         n += len(y)
+
+    if not n:
+        raise ValueError("DataLoader de train vacío")
+
     return total / n
 
 
-@torch.no_grad()                                     # sin gradientes: más rápido y menos memoria
-def predecir(modelo, dl, criterio, dispositivo) -> tuple[float, np.ndarray]:
-    modelo.eval()                                    # desactiva dropout; BatchNorm usa medias móviles
-    total, n, probs = 0.0, 0, []
+@torch.no_grad()
+def predecir(
+    modelo,
+    dl,
+    criterio,
+    dispositivo,
+) -> tuple[float, np.ndarray]:
+    modelo.eval()
+    total, n, probabilidades = 0.0, 0, []
+
     for x, y in dl:
-        x, y = x.to(dispositivo), y.to(dispositivo).unsqueeze(1)
+        x = x.to(dispositivo)
+        y = y.to(dispositivo).unsqueeze(1)
+
         logits = modelo(x)
-        total += criterio(logits, y).item() * len(y)
+        perdida = criterio(logits, y)
+
+        if not torch.isfinite(perdida):
+            raise RuntimeError(
+                "Pérdida de evaluación no finita"
+            )
+
+        total += perdida.item() * len(y)
         n += len(y)
-        probs.append(torch.sigmoid(logits).squeeze(1).cpu().numpy())
-    return total / n, np.concatenate(probs)
+
+        probabilidades.append(
+            torch.sigmoid(logits)
+            .squeeze(1)
+            .cpu()
+            .numpy()
+        )
+
+    if not n:
+        raise ValueError("DataLoader de evaluación vacío")
+
+    return total / n, np.concatenate(probabilidades)
 
 
-# =========================================================================== #
-# 4. GRÁFICAS Y TEST
-# =========================================================================== #
+# =====================================================================
+# GRÁFICAS
+# =====================================================================
 
-def dibujar_curvas(hist: pd.DataFrame, mejor: int, ruta: Path, titulo: str) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    axes[0].plot(hist.epoca, hist.perdida_train, marker="o", color="#2a78d6", label="train")
-    axes[0].plot(hist.epoca, hist.perdida_val, marker="o", color="#eb6834", label="validación")
-    axes[0].set_title("Pérdida (BCE)"); axes[0].set_xlabel("época"); axes[0].legend(frameon=False)
-    axes[1].plot(hist.epoca, hist.auc_val, marker="o", color="#eb6834", label="AUC validación (paciente)")
-    axes[1].axhline(0.5, color="gray", ls="--", lw=1)
-    axes[1].text(hist.epoca.min(), 0.505, " azar", color="gray", fontsize=8)
-    axes[1].set_ylim(0.3, 1.0); axes[1].set_title("AUC por paciente"); axes[1].set_xlabel("época")
+def dibujar_curvas(
+    hist: pd.DataFrame,
+    mejor: int,
+    ruta: Path,
+    titulo: str,
+) -> None:
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
+
+    axes[0].plot(
+        hist.epoca,
+        hist.perdida_train,
+        "o-",
+        markersize=4,
+        color="#2a78d6",
+        label="Train",
+    )
+    axes[0].plot(
+        hist.epoca,
+        hist.perdida_val,
+        "o-",
+        markersize=4,
+        color="#eb6834",
+        label="Validación",
+    )
+    axes[0].set_title("Pérdida BCE")
+    axes[0].set_ylabel("Pérdida")
+
+    for ax, columna, etiqueta in (
+        (axes[1], "recall_val", "Recall"),
+        (axes[2], "precision_val", "Precisión"),
+    ):
+        ax.plot(
+            hist.epoca,
+            hist[columna],
+            "o-",
+            markersize=4,
+            color="#eb6834",
+            label="Validación",
+        )
+        ax.set_title(
+            f"{etiqueta} por paciente · pCR = 1"
+        )
+        ax.set_ylabel(etiqueta)
+        ax.set_ylim(-0.03, 1.03)
+
     for ax in axes:
-        ax.axvline(mejor, color="gray", ls=":", lw=1)
-        ax.spines[["top", "right"]].set_visible(False)
-    axes[1].text(mejor, 0.32, f" mejor época = {mejor}", fontsize=8, color="gray")
-    axes[1].legend(frameon=False, loc="upper left")
-    fig.suptitle(titulo, fontsize=10)
-    fig.tight_layout(); fig.savefig(ruta, dpi=120); plt.close(fig)
+        ax.set_xlabel("Época")
+        ax.grid(alpha=0.2)
+        ax.legend(frameon=False)
+        ax.axvline(
+            mejor,
+            color="gray",
+            linestyle=":",
+            linewidth=1,
+        )
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    fig.suptitle(
+        f"{titulo}\n"
+        f"Recall y precisión: umbral 0,5 · "
+        f"mejor época por AUC: {mejor}",
+        fontsize=10,
+    )
+
+    fig.tight_layout()
+    fig.savefig(ruta, dpi=150)
+    plt.close(fig)
 
 
-def dibujar_matriz(met: dict, ruta: Path, titulo: str) -> None:
-    m = np.array([[met["VN"], met["FP"]], [met["FN"], met["VP"]]])
-    fig, ax = plt.subplots(figsize=(4.2, 3.8))
-    ax.imshow(m, cmap="Blues")
+def dibujar_matriz(
+    met: dict,
+    ruta: Path,
+    titulo: str,
+) -> None:
+    matriz = np.array([
+        [met["VN"], met["FP"]],
+        [met["FN"], met["VP"]],
+    ])
+
+    fig, ax = plt.subplots(figsize=(4.8, 4.2))
+    ax.imshow(matriz, cmap="Blues")
+
     for i in range(2):
         for j in range(2):
-            ax.text(j, i, m[i, j], ha="center", va="center", fontsize=14,
-                    color="white" if m[i, j] > m.max() / 2 else "black")
-    ax.set_xticks([0, 1], ["pred. no pCR", "pred. pCR"])
-    ax.set_yticks([0, 1], ["real no pCR", "real pCR"])
+            ax.text(
+                j,
+                i,
+                str(matriz[i, j]),
+                ha="center",
+                va="center",
+                fontsize=14,
+                color=(
+                    "white"
+                    if matriz[i, j] > matriz.max() / 2
+                    else "black"
+                ),
+            )
+
+    ax.set_xticks(
+        [0, 1],
+        ["Pred. no pCR", "Pred. pCR"],
+    )
+    ax.set_yticks(
+        [0, 1],
+        ["Real no pCR", "Real pCR"],
+    )
     ax.set_title(titulo, fontsize=10)
-    fig.tight_layout(); fig.savefig(ruta, dpi=120); plt.close(fig)
+
+    fig.tight_layout()
+    fig.savefig(ruta, dpi=150)
+    plt.close(fig)
 
 
-def evaluar_test(modelo, ruta_pesos: Path, umbral: float, args, dispositivo, carpeta: Path) -> dict:
-    """Evaluación FINAL en test: una sola pasada, sin tocar nada del modelo.
+# =====================================================================
+# TEST FINAL OPCIONAL
+# =====================================================================
 
-    Usa los pesos de la mejor época (elegida en validación) y el umbral elegido en
-    validación. Si después de mirar estos resultados se cambia el modelo, dejan de
-    ser válidos.
-    """
-    modelo.load_state_dict(torch.load(ruta_pesos, map_location=dispositivo))
-    dl_te, filas_te = pp.crear_dataloader_test(batch_size=args.batch * 2, num_workers=args.workers)
-    if args.rapido:                                   # modo prueba: pocos pacientes también en test
-        pac = filas_te.drop_duplicates("patient_id").groupby("pCR").head(5).patient_id
-        filas_te = filas_te[filas_te.patient_id.isin(pac)].reset_index(drop=True)
-        dl_te = torch.utils.data.DataLoader(pp.DatasetCortes(filas_te), batch_size=args.batch * 2,
-                                            shuffle=False)
-    _, prob = predecir(modelo, dl_te, nn.BCEWithLogitsLoss(), dispositivo)
-    met_05, tabla = metricas_paciente(prob, filas_te, 0.5)
-    met_u, _ = metricas_paciente(prob, filas_te, umbral)
+def evaluar_test(
+    modelo,
+    ruta_pesos,
+    umbral,
+    args,
+    dispositivo,
+    carpeta,
+    config_espacial,
+) -> dict:
+    modelo.load_state_dict(
+        torch.load(
+            ruta_pesos,
+            map_location=dispositivo,
+            weights_only=True,
+        )
+    )
+
+    dl_test, filas_test = pp.crear_dataloader_test(
+        batch_size=args.batch * 2,
+        num_workers=args.workers,
+        config_espacial=config_espacial,
+    )
+
+    _, prob = predecir(
+        modelo,
+        dl_test,
+        nn.BCEWithLogitsLoss(),
+        dispositivo,
+    )
+
+    met_05, tabla = metricas_paciente(
+        prob,
+        filas_test,
+        umbral=0.5,
+    )
+    met_umbral, _ = metricas_paciente(
+        prob,
+        filas_test,
+        umbral=umbral,
+    )
+
     tabla.to_csv(carpeta / "test_pacientes.csv")
-    dibujar_matriz(met_u, carpeta / "matriz_confusion_test.png",
-                   f"Test ({len(tabla)} pacientes) · umbral {umbral:.3f}")
-    redondear = lambda d: {k: round(v, 4) if isinstance(v, float) else v for k, v in d.items()}
-    return {"pacientes": len(tabla), "umbral_0.5": redondear(met_05),
-            f"umbral_validacion_{umbral:.4f}": redondear(met_u)}
+
+    dibujar_matriz(
+        met_umbral,
+        carpeta / "matriz_confusion_test.png",
+        f"Test · umbral de validación {umbral:.3f}",
+    )
+
+    return {
+        "pacientes": len(tabla),
+        "umbral_0.5": met_05,
+        "umbral_validacion": umbral,
+        "metricas_umbral_validacion": met_umbral,
+    }
 
 
-# =========================================================================== #
-# MAIN: verificar, entrenar y (opcional) evaluar en test
-# =========================================================================== #
+# =====================================================================
+# MAIN
+# =====================================================================
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--epocas", type=int, default=10, help="número máximo de épocas (defecto: 10)")
-    p.add_argument("--paciencia", type=int, default=5, help="early stopping: épocas sin mejorar el AUC")
-    p.add_argument("--perdida", choices=["ponderada", "normal"], default="ponderada",
-                   help="ponderada = BCEWithLogitsLoss con pos_weight = N0/N1")
-    p.add_argument("--representacion", choices=["fases", "realce"], default="fases",
-                   help="fases originales o PRE, EARLY-PRE, LATE-EARLY calculados dentro del modelo")
-    p.add_argument("--fold", type=int, default=0, help="fold de validación (0-4)")
-    p.add_argument("--batch", type=int, default=32)
-    p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--dropout", type=float, default=0.3)
-    p.add_argument("--canales", type=int, nargs=6, default=[16, 32, 64, 128, 128, 128])
-    p.add_argument("--sin-aumento", action="store_true", help="desactiva el aumento de datos")
-    p.add_argument("--semilla", type=int, default=42)
-    p.add_argument("--workers", type=int, default=0, help="procesos para cargar datos (0 en Windows/CPU)")
-    p.add_argument("--rapido", action="store_true",
-                   help="modo prueba: 10 pacientes por clase en train y 5 en validación")
-    p.add_argument("--nombre", default=None, help="nombre del experimento (carpeta y pesos)")
-    p.add_argument("--test", action="store_true",
-                   help="al final, evalúa UNA vez en test con la mejor época y el umbral de validación")
-    p.add_argument("--verificar", action="store_true",
-                   help="solo muestra el resumen de la red y hace las verificaciones A y B (no entrena)")
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument("--epocas", type=int, default=10)
+    parser.add_argument("--paciencia", type=int, default=5)
+    parser.add_argument(
+        "--perdida",
+        choices=["ponderada", "normal"],
+        default="ponderada",
+    )
+    parser.add_argument(
+        "--representacion",
+        choices=["fases", "realce"],
+        default="fases",
+    )
+    parser.add_argument(
+        "--atencion",
+        choices=["ninguna", "spatial"],
+        default="spatial",
+    )
+    parser.add_argument("--fold", type=int, default=0)
+    parser.add_argument("--batch", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=1e-4,
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=DROPOUT,
+    )
+    parser.add_argument(
+        "--canales",
+        type=int,
+        nargs=4,
+        default=list(CANALES),
+    )
+    parser.add_argument("--sin-aumento", action="store_true")
+    parser.add_argument("--semilla", type=int, default=42)
+    parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--rapido", action="store_true")
+    parser.add_argument("--nombre", default=None)
+    parser.add_argument("--test", action="store_true")
+    parser.add_argument("--verificar", action="store_true")
+    parser.add_argument(
+        "--preprocesado-config",
+        type=Path,
+        default=None,
+    )
+
+    args = parser.parse_args()
+
+    if args.epocas < 1 or args.paciencia < 1:
+        parser.error("epocas y paciencia deben ser positivas")
+
+    if args.batch < 1 or args.workers < 0:
+        parser.error("batch debe ser positivo y workers >= 0")
+
+    if not 0 <= args.fold <= 4:
+        parser.error("fold debe estar entre 0 y 4")
+
+    if not 0 <= args.dropout < 1:
+        parser.error("dropout debe estar en [0, 1)")
+
+    if any(c < 1 for c in args.canales):
+        parser.error("Todos los canales deben ser positivos")
+
+    if not np.isfinite(args.lr) or args.lr <= 0:
+        parser.error("lr debe ser positivo y finito")
+
+    if (
+        not np.isfinite(args.weight_decay)
+        or args.weight_decay < 0
+    ):
+        parser.error("weight-decay debe ser finito y >= 0")
+
+    if args.rapido and args.test:
+        parser.error(
+            "Reserva --test para la evaluación final, "
+            "sin modo rápido"
+        )
+
+    config_espacial = (
+        pp.ConfigEspacial.desde_json(args.preprocesado_config)
+        if args.preprocesado_config
+        else pp.ConfigEspacial()
+    )
 
     if args.verificar:
-        modelo = CNNpCR(canales=tuple(args.canales), dropout=args.dropout, representacion=args.representacion)
+        modelo = CNNpCR(
+            canales=tuple(args.canales),
+            dropout=args.dropout,
+            representacion=args.representacion,
+            atencion=args.atencion,
+        )
         resumen(modelo)
-        print()
         verificar_formas(modelo)
-        verificar_aprendizaje(semilla=args.semilla, representacion=args.representacion)
+        verificar_aprendizaje(
+            semilla=args.semilla,
+            representacion=args.representacion,
+            canales=tuple(args.canales),
+            config_espacial=config_espacial,
+            atencion=args.atencion,
+        )
         return
 
     fijar_semilla(args.semilla)
-    dispositivo = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    nombre = args.nombre or f"{args.perdida}_f{args.fold}" + ("_rapido" if args.rapido else "")
-    if args.nombre is None and args.representacion == "realce":
-        nombre += "_realce"
-    carpeta = REPO / "resultados" / "entrenamiento" / nombre
-    carpeta.mkdir(parents=True, exist_ok=True)
+
+    dispositivo = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+
+    nombre = args.nombre
+
+    if nombre is None:
+        nombre = (
+            f"cnn4_3pool_{args.perdida}_f{args.fold}"
+            f"_{args.representacion}_{args.atencion}"
+        )
+        if args.preprocesado_config:
+            nombre += f"_{args.preprocesado_config.stem}"
+        if args.rapido:
+            nombre += "_rapido"
+
+    carpeta = (
+        REPO / "resultados" / "entrenamiento" / nombre
+    )
     ruta_pesos = REPO / "models" / f"{nombre}.pt"
-    ruta_pesos.parent.mkdir(exist_ok=True)
 
-    # ---- Datos ----
-    d = pp.crear_dataloaders(fold_val=args.fold, batch_size=args.batch, aumentar=not args.sin_aumento,
-                             num_workers=args.workers, semilla=args.semilla,
-                             max_pacientes=10 if args.rapido else None)
-    pos_weight = d["pos_weight"]
+    if (
+        ruta_pesos.exists()
+        or (carpeta.exists() and any(carpeta.iterdir()))
+    ):
+        parser.error(
+            f"El experimento '{nombre}' ya tiene resultados. "
+            "Utiliza otro --nombre."
+        )
 
-    # ---- Modelo, pérdida y optimizador ----
-    modelo = CNNpCR(canales=tuple(args.canales), dropout=args.dropout, representacion=args.representacion).to(dispositivo)
-    pw = torch.tensor([pos_weight], device=dispositivo) if args.perdida == "ponderada" else None
-    criterio = nn.BCEWithLogitsLoss(pos_weight=pw)
-    criterio_val = nn.BCEWithLogitsLoss()           # pérdida de validación sin ponderar: comparable
-    optimizador = torch.optim.AdamW(modelo.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    datos = pp.crear_dataloaders(
+        fold_val=args.fold,
+        batch_size=args.batch,
+        aumentar=not args.sin_aumento,
+        num_workers=args.workers,
+        semilla=args.semilla,
+        max_pacientes=10 if args.rapido else None,
+        config_espacial=config_espacial,
+    )
+
+    if datos["filas_val"].pCR.nunique() != 2:
+        raise ValueError(
+            "Validación necesita ambas clases para calcular AUC"
+        )
+
+    pos_weight = float(datos["pos_weight"])
+
+    modelo = CNNpCR(
+        canales=tuple(args.canales),
+        dropout=args.dropout,
+        representacion=args.representacion,
+        atencion=args.atencion,
+    ).to(dispositivo)
+
+    peso_positivo = (
+        torch.tensor([pos_weight], device=dispositivo)
+        if args.perdida == "ponderada"
+        else None
+    )
+
+    criterio = nn.BCEWithLogitsLoss(
+        pos_weight=peso_positivo
+    )
+
+    # Mantiene la validación sin ponderar.
+    criterio_val = nn.BCEWithLogitsLoss()
+
+    optimizador = torch.optim.AdamW(
+        modelo.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+    )
+
+    carpeta.mkdir(parents=True, exist_ok=True)
+    ruta_pesos.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Experimento: {nombre}")
+    print("Arquitectura: 4 etapas, 3 MaxPooling y GAP final")
+    print(f"Canales: {tuple(args.canales)}")
     print(f"Representación: {args.representacion}")
-    print(f"Dispositivo: {dispositivo}" + (f" ({torch.cuda.get_device_name(0)})" if dispositivo.type == "cuda" else ""))
-    print(f"Train: {len(d['filas_train'])} cortes / {d['filas_train'].patient_id.nunique()} pacientes | "
-          f"Val: {len(d['filas_val'])} cortes / {d['filas_val'].patient_id.nunique()} pacientes")
-    print(f"Pérdida: {args.perdida} (pos_weight = {pos_weight:.3f}) | parámetros: {contar_parametros(modelo):,} | "
-          f"caché: {d['usa_cache']}")
-    print(f"Épocas máx.: {args.epocas} | paciencia: {args.paciencia} | batch: {args.batch} | lr: {args.lr}\n")
-    print(f"{'época':>5} {'pérd_train':>10} {'pérd_val':>9} {'AUC_val':>8} {'sens':>6} {'esp':>6} {'tiempo':>7}")
+    print(f"Atención: {args.atencion}")
 
-    # ---- Bucle de épocas ----
+    if args.atencion == "spatial":
+        print(
+            "Atención en etapa 4, antes del último pooling, "
+            "sobre mapas de 64x64"
+        )
+
+    print(f"Dispositivo: {dispositivo}")
+
+    if dispositivo.type == "cuda":
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+
+    print(
+        f"Train: {len(datos['filas_train'])} cortes / "
+        f"{datos['filas_train'].patient_id.nunique()} pacientes | "
+        f"Val: {len(datos['filas_val'])} cortes / "
+        f"{datos['filas_val'].patient_id.nunique()} pacientes"
+    )
+    print(
+        f"Pérdida: {args.perdida} | pos_weight: {pos_weight:.3f} | "
+        f"parámetros: {contar_parametros(modelo):,} | "
+        f"caché: {datos['usa_cache']}"
+    )
+    print("Preprocesado:", config_espacial.to_dict())
+    print(
+        f"Épocas máx.: {args.epocas} | "
+        f"paciencia: {args.paciencia} | "
+        f"batch: {args.batch} | lr: {args.lr}"
+    )
+    print(
+        "Recall y precisión: por paciente, pCR=1, "
+        "umbral fijo 0.5.\n"
+    )
+    print(
+        f"{'época':>5} {'pérd_train':>10} "
+        f"{'pérd_val':>9} {'AUC_val':>8} "
+        f"{'recall':>7} {'prec.':>7} "
+        f"{'esp.':>7} {'tiempo':>7}"
+    )
+
     if dispositivo.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
-    historial, mejor_auc, mejor_epoca, sin_mejora = [], -1.0, 0, 0
-    t_total = time.time()
+
+    historial = []
+    mejor_auc = -np.inf
+    mejor_epoca = 0
+    mejores_metricas = None
+    sin_mejora = 0
+    inicio_total = time.time()
+
     for epoca in range(1, args.epocas + 1):
-        t0 = time.time()
-        perd_tr = entrenar_epoca(modelo, d["train"], criterio, optimizador, dispositivo)
-        perd_va, prob = predecir(modelo, d["val"], criterio_val, dispositivo)
-        met, tabla = metricas_paciente(prob, d["filas_val"])
-        t_epoca = time.time() - t0
-        historial.append({"epoca": epoca, "perdida_train": perd_tr, "perdida_val": perd_va,
-                          "auc_val": met["auc"], "sens_val": met["sensibilidad"],
-                          "esp_val": met["especificidad"], "segundos": t_epoca})
+        inicio_epoca = time.time()
+
+        perdida_train = entrenar_epoca(
+            modelo,
+            datos["train"],
+            criterio,
+            optimizador,
+            dispositivo,
+        )
+
+        perdida_val, prob = predecir(
+            modelo,
+            datos["val"],
+            criterio_val,
+            dispositivo,
+        )
+
+        met, tabla = metricas_paciente(
+            prob,
+            datos["filas_val"],
+            umbral=0.5,
+        )
+
+        if not np.isfinite(met["auc"]):
+            raise RuntimeError("AUC de validación no finita")
+
+        segundos = time.time() - inicio_epoca
+
+        historial.append({
+            "epoca": epoca,
+            "perdida_train": perdida_train,
+            "perdida_val": perdida_val,
+            "auc_val": met["auc"],
+            "sens_val": met["sensibilidad"],
+            "recall_val": met["recall"],
+            "precision_val": met["precision"],
+            "esp_val": met["especificidad"],
+            "segundos": segundos,
+        })
 
         marca = ""
-        if met["auc"] > mejor_auc:                   # guardar la MEJOR época, no la última
-            mejor_auc, mejor_epoca, sin_mejora = met["auc"], epoca, 0
+
+        if met["auc"] > mejor_auc:
+            mejor_auc = met["auc"]
+            mejor_epoca = epoca
+            mejores_metricas = met.copy()
+            sin_mejora = 0
+
             torch.save(modelo.state_dict(), ruta_pesos)
             tabla.to_csv(carpeta / "val_pacientes.csv")
-            mejores_metricas = met
             marca = "  * guardado"
+
         else:
             sin_mejora += 1
-        print(f"{epoca:>5} {perd_tr:>10.4f} {perd_va:>9.4f} {met['auc']:>8.3f} "
-              f"{met['sensibilidad']:>6.2f} {met['especificidad']:>6.2f} {t_epoca:>6.0f}s{marca}")
+
+        hist = pd.DataFrame(historial)
+        hist.to_csv(carpeta / "historial.csv", index=False)
+
+        dibujar_curvas(
+            hist,
+            mejor_epoca,
+            carpeta / "curvas.png",
+            (
+                f"{nombre} · pérdida {args.perdida} "
+                f"· atención {args.atencion}"
+            ),
+        )
+
+        print(
+            f"{epoca:>5} "
+            f"{perdida_train:>10.4f} "
+            f"{perdida_val:>9.4f} "
+            f"{met['auc']:>8.3f} "
+            f"{met['recall']:>7.2f} "
+            f"{met['precision']:>7.2f} "
+            f"{met['especificidad']:>7.2f} "
+            f"{segundos:>6.0f}s{marca}",
+            flush=True,
+        )
 
         if sin_mejora >= args.paciencia:
-            print(f"\nEarly stopping: {args.paciencia} épocas sin mejorar el AUC de validación.")
+            print(
+                f"\nEarly stopping: {args.paciencia} épocas "
+                "sin mejorar el AUC de validación."
+            )
             break
 
-    # ---- Resultados ----
-    t_total = time.time() - t_total
+    segundos_entrenamiento = time.time() - inicio_total
     hist = pd.DataFrame(historial)
-    hist.to_csv(carpeta / "historial.csv", index=False)
-    dibujar_curvas(hist, mejor_epoca, carpeta / "curvas.png", f"{nombre} · pérdida {args.perdida}")
 
-    tabla_mejor = pd.read_csv(carpeta / "val_pacientes.csv", index_col=0)
+    tabla_mejor = pd.read_csv(
+        carpeta / "val_pacientes.csv",
+        index_col=0,
+    )
+
     umbral = umbral_youden(tabla_mejor)
-    met_umbral, _ = metricas_paciente(
-        tabla_mejor.prob.values, pd.DataFrame({"patient_id": tabla_mejor.index, "pCR": tabla_mejor.pCR}), umbral)
 
-    resultados_test = None
-    if args.test:
-        print("\nEvaluando en TEST (una sola vez, con la mejor época y el umbral de validación)...")
-        resultados_test = evaluar_test(modelo, ruta_pesos, umbral, args, dispositivo, carpeta)
+    filas_mejor = pd.DataFrame({
+        "patient_id": tabla_mejor.index.to_numpy(),
+        "pCR": tabla_mejor.pCR.to_numpy(),
+    })
+
+    met_umbral, _ = metricas_paciente(
+        tabla_mejor.prob.to_numpy(),
+        filas_mejor,
+        umbral=umbral,
+    )
+
+    dibujar_matriz(
+        met_umbral,
+        carpeta / "matriz_confusion_val.png",
+        f"Validación · umbral Youden {umbral:.3f}",
+    )
 
     config = {
         "experimento": nombre,
         "fecha": datetime.now().isoformat(timespec="seconds"),
         "arquitectura": modelo.config(),
         "entrenamiento": {
-            "epocas_max": args.epocas, "epocas_realizadas": len(hist), "mejor_epoca": mejor_epoca,
-            "paciencia": args.paciencia, "criterio_parada": "AUC por paciente en validación",
-            "perdida": args.perdida, "pos_weight": round(pos_weight, 4) if args.perdida == "ponderada" else None,
-            "optimizador": "AdamW", "lr": args.lr, "weight_decay": args.weight_decay,
-            "batch": args.batch, "semilla": args.semilla, "fold_validacion": args.fold,
-            "aumento": d["aumento"], "normalizacion": "PNG / 255, apilado PRE, EARLY, LATE",
-            "modo_rapido": args.rapido, "agregacion_paciente": "media",
+            "epocas_max": args.epocas,
+            "epocas_realizadas": len(hist),
+            "mejor_epoca": mejor_epoca,
+            "paciencia": args.paciencia,
+            "criterio_parada": "AUC por paciente en validación",
+            "perdida": args.perdida,
+            "pos_weight": (
+                pos_weight
+                if args.perdida == "ponderada"
+                else None
+            ),
+            "optimizador": "AdamW",
+            "lr": args.lr,
+            "weight_decay": args.weight_decay,
+            "batch": args.batch,
+            "semilla": args.semilla,
+            "fold_validacion": args.fold,
+            "aumento": datos["aumento"],
+            "preprocesado_espacial": config_espacial.to_dict(),
+            "preprocesado_config": (
+                str(args.preprocesado_config)
+                if args.preprocesado_config else None
+            ),
+            "modo_rapido": args.rapido,
+            "agregacion_paciente": "media",
+            "umbral_curvas_recall_precision": 0.5,
+            "clase_positiva": "pCR=1",
+            "perdida_val_ponderada": False,
         },
         "validacion_mejor_epoca": {
-            "umbral_0.5": {k: round(v, 4) if isinstance(v, float) else v for k, v in mejores_metricas.items()},
-            "umbral_youden": round(umbral, 4),
-            "con_umbral_youden": {k: round(v, 4) if isinstance(v, float) else v for k, v in met_umbral.items()},
+            "umbral_0.5": mejores_metricas,
+            "umbral_youden": umbral,
+            "con_umbral_youden": met_umbral,
         },
         "entorno": {
             "dispositivo": str(dispositivo),
-            "gpu": torch.cuda.get_device_name(0) if dispositivo.type == "cuda" else None,
-            "memoria_max_MB": round(torch.cuda.max_memory_allocated() / 2**20) if dispositivo.type == "cuda" else None,
-            "python": platform.python_version(), "torch": torch.__version__, "sistema": platform.platform(),
-            "segundos_por_epoca_medio": round(float(hist.segundos.mean()), 1),
-            "segundos_total": round(t_total, 1),
+            "gpu": (
+                torch.cuda.get_device_name(0)
+                if dispositivo.type == "cuda" else None
+            ),
+            "memoria_max_MB": (
+                torch.cuda.max_memory_allocated() / 2**20
+                if dispositivo.type == "cuda" else None
+            ),
+            "python": platform.python_version(),
+            "torch": torch.__version__,
+            "sistema": platform.platform(),
+            "segundos_por_epoca_medio": float(hist.segundos.mean()),
+            "segundos_entrenamiento": segundos_entrenamiento,
         },
-        "pesos": {"ruta": str(ruta_pesos.relative_to(REPO)), "sha256": sha256(ruta_pesos)},
-        "test": resultados_test,
+        "pesos": {
+            "ruta": str(ruta_pesos.relative_to(REPO)),
+            "sha256": sha256(ruta_pesos),
+        },
+        "test": None,
     }
-    (carpeta / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def guardar_config():
+        (carpeta / "config.json").write_text(
+            json.dumps(
+                limpiar_json(config),
+                indent=2,
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
+            encoding="utf-8",
+        )
+
+    guardar_config()
+
+    if args.test:
+        print(
+            "\nEvaluando TEST con pesos y umbral "
+            "elegidos en validación..."
+        )
+
+        config["test"] = evaluar_test(
+            modelo,
+            ruta_pesos,
+            umbral,
+            args,
+            dispositivo,
+            carpeta,
+            config_espacial,
+        )
+        guardar_config()
 
     m = mejores_metricas
-    print(f"\nMejor época: {mejor_epoca} | AUC val (paciente) = {mejor_auc:.3f}")
-    print(f"Umbral 0,5    -> sens {m['sensibilidad']:.2f} | esp {m['especificidad']:.2f} | "
-          f"VP {m['VP']} VN {m['VN']} FP {m['FP']} FN {m['FN']}")
-    print(f"Umbral Youden {umbral:.3f} -> sens {met_umbral['sensibilidad']:.2f} | "
-          f"esp {met_umbral['especificidad']:.2f}")
-    if resultados_test:
-        mt = resultados_test[f"umbral_validacion_{umbral:.4f}"]
-        print(f"\nTEST ({resultados_test['pacientes']} pacientes, umbral {umbral:.3f}): "
-              f"AUC {mt['auc']:.3f} | sens {mt['sensibilidad']:.2f} | esp {mt['especificidad']:.2f} | "
-              f"VP {mt['VP']} VN {mt['VN']} FP {mt['FP']} FN {mt['FN']}")
-    print(f"Tiempo total: {t_total / 60:.1f} min ({hist.segundos.mean():.0f} s/época)")
-    print(f"Pesos:      {ruta_pesos.relative_to(REPO)}")
+
+    print(
+        f"\nMejor época: {mejor_epoca} | "
+        f"AUC val por paciente: {mejor_auc:.3f}"
+    )
+    print(
+        f"Umbral 0.5 -> recall {m['recall']:.2f} | "
+        f"precisión {m['precision']:.2f} | "
+        f"especificidad {m['especificidad']:.2f}"
+    )
+    print(
+        f"VP {m['VP']} | VN {m['VN']} | "
+        f"FP {m['FP']} | FN {m['FN']}"
+    )
+    print(
+        f"Umbral Youden {umbral:.3f} -> "
+        f"recall {met_umbral['recall']:.2f} | "
+        f"precisión {met_umbral['precision']:.2f} | "
+        f"especificidad {met_umbral['especificidad']:.2f}"
+    )
+
+    if config["test"] is not None:
+        mt = config["test"]["metricas_umbral_validacion"]
+
+        print(
+            f"TEST -> AUC {mt['auc']:.3f} | "
+            f"recall {mt['recall']:.2f} | "
+            f"precisión {mt['precision']:.2f} | "
+            f"especificidad {mt['especificidad']:.2f}"
+        )
+
+    print(
+        f"Tiempo de entrenamiento: "
+        f"{segundos_entrenamiento / 60:.1f} min"
+    )
+    print(f"Pesos: {ruta_pesos.relative_to(REPO)}")
     print(f"Resultados: {carpeta.relative_to(REPO)}")
+    print("Gráficas: curvas.png")
+
     if args.rapido:
-        print("\n(Modo rápido: las métricas NO son representativas; solo comprueba que todo funciona.)")
+        print(
+            "\nModo rápido: las métricas solo comprueban "
+            "el funcionamiento."
+        )
 
 
 if __name__ == "__main__":

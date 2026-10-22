@@ -1,0 +1,10 @@
+{
+  "registrar": false,
+  "recortar": true,
+  "roi": true,
+  "umbral_roi": 5,
+  "area_minima_roi": 64,
+  "margen": 12,
+  "normalizacion": "escala_comun",
+  "clahe": false
+}

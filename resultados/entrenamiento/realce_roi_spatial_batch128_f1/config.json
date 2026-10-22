@@ -1,0 +1,114 @@
+{
+  "experimento": "realce_roi_spatial_batch128_f1",
+  "fecha": "2026-10-22T05:35:51",
+  "arquitectura": {
+    "canales": [
+      16,
+      32,
+      64,
+      128,
+      128,
+      128
+    ],
+    "dropout": 0.3,
+    "entrada": [
+      3,
+      256,
+      256
+    ],
+    "parametros": 393331,
+    "representacion": "realce",
+    "canales_derivados": [
+      "PRE",
+      "EARLY-PRE",
+      "LATE-EARLY"
+    ],
+    "atencion": "spatial",
+    "atencion_etapa": 5,
+    "atencion_posicion": "despues de ReLU y antes del quinto MaxPooling",
+    "atencion_resolucion_hw": [
+      16,
+      16
+    ],
+    "atencion_kernel": 7
+  },
+  "entrenamiento": {
+    "epocas_max": 30,
+    "epocas_realizadas": 14,
+    "mejor_epoca": 4,
+    "paciencia": 10,
+    "criterio_parada": "AUC por paciente en validación",
+    "perdida": "ponderada",
+    "pos_weight": 2.372496,
+    "optimizador": "AdamW",
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch": 128,
+    "semilla": 42,
+    "fold_validacion": 1,
+    "aumento": "AumentoGeometrico(p_volteo=0.5, max_grados=10.0, max_desplazamiento=8)",
+    "preprocesado_espacial": {
+      "registrar": false,
+      "recortar": true,
+      "max_desplazamiento": 8,
+      "mejora_minima": 0.02,
+      "correlacion_minima": 0.4,
+      "margen": 12,
+      "roi": true,
+      "umbral_roi": 5,
+      "area_minima_roi": 64,
+      "normalizacion": "escala_comun",
+      "clahe": false,
+      "clahe_clip": 1.5,
+      "clahe_tiles": 8
+    },
+    "preprocesado_config": "configs/roi_normalizacion.json",
+    "modo_rapido": false,
+    "agregacion_paciente": "media",
+    "umbral_curvas_recall_precision": 0.5,
+    "clase_positiva": "pCR=1",
+    "perdida_val_ponderada": false
+  },
+  "validacion_mejor_epoca": {
+    "umbral_0.5": {
+      "auc": 0.568523,
+      "sensibilidad": 0.241935,
+      "recall": 0.241935,
+      "precision": 0.384615,
+      "especificidad": 0.847134,
+      "accuracy": 0.675799,
+      "VP": 15,
+      "VN": 133,
+      "FP": 24,
+      "FN": 47
+    },
+    "umbral_youden": 0.458265,
+    "con_umbral_youden": {
+      "auc": 0.568523,
+      "sensibilidad": 0.370968,
+      "recall": 0.370968,
+      "precision": 0.410714,
+      "especificidad": 0.789809,
+      "accuracy": 0.671233,
+      "VP": 23,
+      "VN": 124,
+      "FP": 33,
+      "FN": 39
+    }
+  },
+  "entorno": {
+    "dispositivo": "cuda",
+    "gpu": "AMD Radeon RX 6700 XT",
+    "memoria_max_MB": 2985.71582,
+    "python": "3.12.14",
+    "torch": "2.14.1+rocm7.14",
+    "sistema": "Linux-7.0.0-34-generic-x86_64-desconocido-with-glibc2.43",
+    "segundos_por_epoca_medio": 58.921626,
+    "segundos_entrenamiento": 827.11528
+  },
+  "pesos": {
+    "ruta": "models/realce_roi_spatial_batch128_f1.pt",
+    "sha256": "4b52743f8a515da495bf2e78125344f95402b74fceb5fd763cca3d8d5636182a"
+  },
+  "test": null
+}

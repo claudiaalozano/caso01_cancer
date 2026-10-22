@@ -2,15 +2,22 @@
 """Preprocesado de BreastDCEDL.
 
 Incluye:
-- Carga de PRE, EARLY y LATE.
-- Diagnóstico y registro opcional de traslaciones pequeñas.
-- Recorte común del fondo negro externo.
-- Normalización PNG / 255.
+- Carga y validación de PRE, EARLY y LATE.
+- Diagnóstico y registro opcional de pequeñas traslaciones.
+- Recorte rectangular común para las tres fases.
+- Estimación opcional del primer plano para definir el recorte.
+- Normalización de intensidad con una escala común.
+- CLAHE opcional y experimental.
 - Aumento geométrico conjunto.
-- Dataset, caché y DataLoaders.
+- Dataset, caché de imágenes originales y DataLoaders.
 
-Registro y recorte están desactivados por defecto.
-El registro es aproximado y requiere revisión visual.
+La estimación del primer plano no identifica anatómicamente la mama
+ni localiza el tumor. Requiere revisión visual.
+
+El registro es aproximado: no garantiza correspondencia anatómica
+píxel a píxel.
+
+Las operaciones nuevas están desactivadas por defecto.
 """
 
 from __future__ import annotations
@@ -67,38 +74,95 @@ def _requiere_utils():
 
 
 # ---------------------------------------------------------------------
-# Configuración espacial
+# Configuración
 # ---------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ConfigEspacial:
     registrar: bool = False
     recortar: bool = False
+
     max_desplazamiento: int = 8
     mejora_minima: float = 0.02
     correlacion_minima: float = 0.4
-    margen: int = 8
+    margen: int = 12
+
+    # Estimación del primer plano para definir una caja de recorte.
+    roi: bool = False
+    umbral_roi: int = 5
+    area_minima_roi: int = 64
+
+    # Opciones: "ninguna" o "escala_comun".
+    normalizacion: str = "ninguna"
+
+    # Experimental: modifica cada fase por separado.
+    clahe: bool = False
+    clahe_clip: float = 1.5
+    clahe_tiles: int = 8
 
     def __post_init__(self):
-        if type(self.registrar) is not bool:
-            raise ValueError("registrar debe ser booleano")
+        for nombre in ("registrar", "recortar", "roi", "clahe"):
+            if type(getattr(self, nombre)) is not bool:
+                raise ValueError(
+                    f"{nombre} debe ser booleano"
+                )
 
-        if type(self.recortar) is not bool:
-            raise ValueError("recortar debe ser booleano")
+        if self.roi and not self.recortar:
+            raise ValueError(
+                "roi requiere recortar=true"
+            )
 
         for nombre in ("max_desplazamiento", "margen"):
             valor = getattr(self, nombre)
+
             if type(valor) is not int or not 1 <= valor <= 32:
                 raise ValueError(
                     f"{nombre} debe ser un entero entre 1 y 32"
                 )
 
-        if not 0 <= self.mejora_minima <= 1:
-            raise ValueError("mejora_minima debe estar entre 0 y 1")
+        for nombre in ("mejora_minima", "correlacion_minima"):
+            valor = getattr(self, nombre)
 
-        if not 0 <= self.correlacion_minima <= 1:
+            if not np.isfinite(valor) or not 0 <= valor <= 1:
+                raise ValueError(
+                    f"{nombre} debe estar entre 0 y 1"
+                )
+
+        if (
+            type(self.umbral_roi) is not int
+            or not 0 <= self.umbral_roi <= 254
+        ):
             raise ValueError(
-                "correlacion_minima debe estar entre 0 y 1"
+                "umbral_roi debe ser un entero entre 0 y 254"
+            )
+
+        if (
+            type(self.area_minima_roi) is not int
+            or not 1 <= self.area_minima_roi <= TAMANO * TAMANO
+        ):
+            raise ValueError(
+                "area_minima_roi fuera de rango"
+            )
+
+        if self.normalizacion not in ("ninguna", "escala_comun"):
+            raise ValueError(
+                "normalizacion debe ser ninguna o escala_comun"
+            )
+
+        if (
+            not np.isfinite(self.clahe_clip)
+            or not 0 < self.clahe_clip <= 10
+        ):
+            raise ValueError(
+                "clahe_clip debe estar entre 0 y 10"
+            )
+
+        if (
+            type(self.clahe_tiles) is not int
+            or not 2 <= self.clahe_tiles <= 32
+        ):
+            raise ValueError(
+                "clahe_tiles debe ser un entero entre 2 y 32"
             )
 
     def to_dict(self) -> dict:
@@ -125,7 +189,9 @@ def _validar_fases(fases: np.ndarray) -> np.ndarray:
         )
 
     if fases.dtype != np.uint8:
-        raise ErrorEntrada("Las fases deben ser uint8")
+        raise ErrorEntrada(
+            "Las fases deben ser uint8"
+        )
 
     return fases
 
@@ -137,9 +203,13 @@ def _bordes(imagen: np.ndarray) -> np.ndarray:
         imagen.astype(np.float64) / ESCALA,
         sigma=1,
     )
+
     gradiente_y, gradiente_x = np.gradient(suavizada)
 
-    return np.hypot(gradiente_y, gradiente_x)
+    return np.hypot(
+        gradiente_y,
+        gradiente_x,
+    )
 
 
 def _mover(
@@ -147,7 +217,7 @@ def _mover(
     desplazamiento_y: int,
     desplazamiento_x: int,
 ) -> np.ndarray:
-    """Traslada píxeles enteros y rellena con cero, sin interpolar."""
+    """Traslada píxeles enteros sin interpolar y rellena con cero."""
 
     alto, ancho = imagen.shape
     salida = np.zeros_like(imagen)
@@ -156,6 +226,7 @@ def _mover(
         max(0, -desplazamiento_y),
         min(alto, alto - desplazamiento_y),
     )
+
     origen_x = slice(
         max(0, -desplazamiento_x),
         min(ancho, ancho - desplazamiento_x),
@@ -165,12 +236,17 @@ def _mover(
         max(0, desplazamiento_y),
         min(alto, alto + desplazamiento_y),
     )
+
     destino_x = slice(
         max(0, desplazamiento_x),
         min(ancho, ancho + desplazamiento_x),
     )
 
-    salida[destino_y, destino_x] = imagen[origen_y, origen_x]
+    salida[destino_y, destino_x] = imagen[
+        origen_y,
+        origen_x,
+    ]
+
     return salida
 
 
@@ -225,6 +301,7 @@ def _estimar_desplazamiento(
         - suma_a**2 / np.maximum(n, 1),
         0,
     )
+
     varianza_b = np.maximum(
         correlacion(unos, b * b)
         - suma_b**2 / np.maximum(n, 1),
@@ -253,10 +330,19 @@ def _estimar_desplazamiento(
     dx = int(indice_x - limite)
 
     antes = float(
-        np.clip(puntuaciones[centro_y, centro_x], -1, 1)
+        np.clip(
+            puntuaciones[centro_y, centro_x],
+            -1,
+            1,
+        )
     )
+
     despues = float(
-        np.clip(region[indice_y, indice_x], -1, 1)
+        np.clip(
+            region[indice_y, indice_x],
+            -1,
+            1,
+        )
     )
 
     resultado.update({
@@ -267,7 +353,9 @@ def _estimar_desplazamiento(
     })
 
     if dy == 0 and dx == 0:
-        resultado["motivo"] = "mejor candidato sin desplazamiento"
+        resultado["motivo"] = (
+            "mejor candidato sin desplazamiento"
+        )
         return resultado
 
     if abs(dy) == limite or abs(dx) == limite:
@@ -293,14 +381,83 @@ def _estimar_desplazamiento(
         )
         return resultado
 
-    resultado["motivo"] = "candidato aceptable para revisión"
+    resultado["motivo"] = (
+        "candidato aceptable para revisión"
+    )
+
     resultado["aplicado"] = config.registrar
 
     return resultado
 
 
 # ---------------------------------------------------------------------
-# Recorte común y procesamiento espacial
+# Estimación del primer plano
+# ---------------------------------------------------------------------
+
+def _mascara_roi(
+    fases: np.ndarray,
+    config: ConfigEspacial,
+) -> tuple[np.ndarray, dict]:
+    """Estima el primer plano para proponer una caja común.
+
+    No segmenta anatómicamente la mama ni localiza el tumor.
+    La máscara define la caja, pero no borra píxeles dentro de ella.
+    """
+
+    from scipy.ndimage import label
+
+    # Unión de las tres fases.
+    primer_plano = (
+        np.max(fases, axis=0) > config.umbral_roi
+    )
+
+    etiquetas, numero = label(
+        primer_plano,
+        structure=np.ones((3, 3), dtype=int),
+    )
+
+    areas = np.bincount(
+        etiquetas.ravel(),
+        minlength=numero + 1,
+    )
+
+    # No se selecciona solo la componente mayor:
+    # se conservan todas las que superen el área mínima.
+    conservar = areas >= config.area_minima_roi
+    conservar[0] = False
+
+    mascara = conservar[etiquetas]
+    fraccion = float(mascara.mean())
+
+    informe = {
+        "umbral": config.umbral_roi,
+        "area_minima": config.area_minima_roi,
+        "componentes_conservadas": int(conservar.sum()),
+        "fraccion_primer_plano": fraccion,
+        "advertencia": (
+            "Estimación heurística: no localiza el tumor. "
+            "Revisar que conserva el tejido relevante."
+        ),
+    }
+
+    # Evita un recorte extremo si la detección es mínima.
+    if fraccion < 0.05:
+        mascara = np.ones_like(primer_plano)
+
+        informe["motivo"] = (
+            "Detección insuficiente; "
+            "se conserva la imagen completa"
+        )
+    else:
+        informe["motivo"] = (
+            "Caja propuesta mediante umbral y componentes"
+        )
+
+    return mascara, informe
+
+
+# ---------------------------------------------------------------------
+# Registro y recorte común
 # ---------------------------------------------------------------------
 
 def procesar_espacial(
@@ -308,26 +465,43 @@ def procesar_espacial(
     config: ConfigEspacial | None = None,
     diagnostico: bool = False,
 ) -> tuple[np.ndarray, dict]:
+    """Registro opcional y recorte común conservando proporciones.
+
+    Con roi=False se buscan márgenes exactamente negros.
+    Con roi=True se estima el primer plano por umbral y componentes.
+
+    La salida mantiene 256x256 mediante resize y padding.
+    Puede seguir existiendo fondo negro.
+    """
+
     fases = _validar_fases(fases)
     config = config or ConfigEspacial()
 
     informe = {
+        "version": "roi_intensidad_v2",
         "config": config.to_dict(),
         "registro": {},
         "recorte": None,
         "advertencia": (
-            "Diagnóstico heurístico; no garantiza "
-            "correspondencia anatómica."
+            "Diagnóstico heurístico; "
+            "no certifica alineación anatómica."
         ),
     }
 
-    if not (config.registrar or config.recortar or diagnostico):
+    if not (
+        config.registrar
+        or config.recortar
+        or diagnostico
+    ):
         return fases, informe
 
     salida = fases.copy()
 
     if config.registrar or diagnostico:
-        for indice, nombre in ((1, "EARLY"), (2, "LATE")):
+        for indice, nombre in (
+            (1, "EARLY"),
+            (2, "LATE"),
+        ):
             resultado = _estimar_desplazamiento(
                 fases[0],
                 fases[indice],
@@ -343,62 +517,225 @@ def procesar_espacial(
                 )
 
     if config.recortar:
-        # Unión de todos los píxeles no negros de las tres fases.
-        # No se elimina tejido oscuro mediante un umbral arbitrario.
+        alto, ancho = salida.shape[1:]
+
         mascara = np.any(salida > 0, axis=0)
+
+        if config.roi:
+            mascara, informe["roi"] = _mascara_roi(
+                salida,
+                config,
+            )
+
         filas, columnas = np.where(mascara)
 
         if len(filas):
-            y0 = int(filas.min())
-            y1 = int(filas.max()) + 1
-            x0 = int(columnas.min())
-            x1 = int(columnas.max()) + 1
+            y0 = max(
+                0,
+                int(filas.min()) - config.margen,
+            )
 
-            lado = max(y1 - y0, x1 - x0) + 2 * config.margen
+            y1 = min(
+                alto,
+                int(filas.max()) + 1 + config.margen,
+            )
 
-            if lado < TAMANO:
-                superior = (y0 + y1 - lado) // 2
-                izquierda = (x0 + x1 - lado) // 2
+            x0 = max(
+                0,
+                int(columnas.min()) - config.margen,
+            )
 
-                superior = max(
-                    0, min(superior, TAMANO - lado)
+            x1 = min(
+                ancho,
+                int(columnas.max()) + 1 + config.margen,
+            )
+
+            caja_completa = (
+                (y0, y1, x0, x1)
+                == (0, alto, 0, ancho)
+            )
+
+            if not caja_completa:
+                # Exactamente las mismas coordenadas para las tres fases.
+                recorte = salida[
+                    :,
+                    y0:y1,
+                    x0:x1,
+                ]
+
+                h, w = recorte.shape[1:]
+
+                escala = min(
+                    alto / h,
+                    ancho / w,
                 )
-                izquierda = max(
-                    0, min(izquierda, TAMANO - lado)
+
+                nuevo_h = min(
+                    alto,
+                    max(1, round(h * escala)),
                 )
 
-                recortes = []
+                nuevo_w = min(
+                    ancho,
+                    max(1, round(w * escala)),
+                )
 
-                for imagen in salida:
-                    recorte = imagen[
-                        superior:superior + lado,
-                        izquierda:izquierda + lado,
-                    ]
+                top = (alto - nuevo_h) // 2
+                left = (ancho - nuevo_w) // 2
 
-                    redimensionada = Image.fromarray(
-                        recorte
-                    ).resize(
-                        (TAMANO, TAMANO),
-                        Image.Resampling.BILINEAR,
-                    )
+                antes = float(
+                    np.mean(salida == 0)
+                )
 
-                    recortes.append(np.asarray(redimensionada))
+                lienzo = np.zeros_like(salida)
 
-                salida = np.stack(recortes)
+                for indice, imagen in enumerate(recorte):
+                    if (nuevo_h, nuevo_w) == (h, w):
+                        redimensionada = imagen
+                    else:
+                        redimensionada = np.asarray(
+                            Image.fromarray(imagen).resize(
+                                (nuevo_w, nuevo_h),
+                                Image.Resampling.BILINEAR,
+                            )
+                        )
+
+                    lienzo[
+                        indice,
+                        top:top + nuevo_h,
+                        left:left + nuevo_w,
+                    ] = redimensionada
+
+                salida = lienzo
 
                 informe["recorte"] = {
-                    "top": superior,
-                    "left": izquierda,
-                    "lado": lado,
-                    "salida": [TAMANO, TAMANO],
-                    "escala": TAMANO / lado,
+                    "bbox_xyxy": [x0, y0, x1, y1],
+                    "tamano_recorte_hw": [h, w],
+                    "tamano_redimensionado_hw": [
+                        nuevo_h,
+                        nuevo_w,
+                    ],
+                    "padding_tblr": [
+                        top,
+                        alto - nuevo_h - top,
+                        left,
+                        ancho - nuevo_w - left,
+                    ],
+                    "escala": escala,
+                    "fraccion_negra_antes": antes,
+                    "fraccion_negra_despues": float(
+                        np.mean(salida == 0)
+                    ),
+                    "nota": (
+                        "Se amplía el campo conservado"
+                        if escala > 1
+                        else (
+                            "Sin ampliación: puede limitarse "
+                            "a recentrar el tejido"
+                        )
+                    ),
                 }
 
     return salida, informe
 
 
 # ---------------------------------------------------------------------
-# Lectura y normalización
+# Normalización y contraste
+# ---------------------------------------------------------------------
+
+def procesar_intensidad(
+    fases: np.ndarray,
+    config: ConfigEspacial | None = None,
+) -> tuple[np.ndarray, dict]:
+    """Devuelve float32 en [0, 1].
+
+    escala_comun:
+        Percentil 99.5 conjunto sobre los valores no nulos del triplete.
+        Se aplica el mismo divisor a PRE, EARLY y LATE.
+        La saturación puede modificar diferencias en los extremos.
+
+    CLAHE:
+        Se aplica por fase y modifica las diferencias de realce.
+        Es una opción experimental, desactivada por defecto.
+
+    No recupera unidades físicas de intensidad MRI.
+    """
+
+    config = config or ConfigEspacial()
+
+    x = np.asarray(
+        fases,
+        dtype=np.float32,
+    ) / ESCALA
+
+    informe = {
+        "normalizacion": config.normalizacion,
+        "clahe": config.clahe,
+    }
+
+    if config.normalizacion == "escala_comun":
+        valores = x[x > 0]
+
+        limite = (
+            float(np.percentile(valores, 99.5))
+            if valores.size else 0.0
+        )
+
+        informe["limite_comun_01"] = limite
+
+        informe["fraccion_saturada"] = (
+            float(np.mean(x > limite))
+            if limite > 0 else 0.0
+        )
+
+        if limite > 0:
+            x = np.clip(
+                x / limite,
+                0.0,
+                1.0,
+            )
+
+    if config.clahe:
+        try:
+            import cv2
+        except ImportError as error:
+            raise RuntimeError(
+                "CLAHE requiere: "
+                "python -m pip install opencv-python-headless"
+            ) from error
+
+        operador = cv2.createCLAHE(
+            clipLimit=config.clahe_clip,
+            tileGridSize=(
+                config.clahe_tiles,
+                config.clahe_tiles,
+            ),
+        )
+
+        fondo_cero = x == 0
+
+        x = np.stack([
+            operador.apply(
+                np.round(
+                    fase * ESCALA
+                ).astype(np.uint8)
+            )
+            for fase in x
+        ]).astype(np.float32) / ESCALA
+
+        # Mantiene negros los píxeles de valor exactamente cero.
+        x[fondo_cero] = 0.0
+
+        informe["advertencia"] = (
+            "CLAHE independiente por fase modifica "
+            "EARLY-PRE y LATE-EARLY."
+        )
+
+    return x.astype(np.float32), informe
+
+
+# ---------------------------------------------------------------------
+# Lectura de imágenes
 # ---------------------------------------------------------------------
 
 def _abrir_png(
@@ -432,14 +769,20 @@ def _abrir_png(
                 )
 
             imagen.load()
-            return np.array(imagen, dtype=np.uint8)
+
+            return np.array(
+                imagen,
+                dtype=np.uint8,
+            )
 
     except ErrorEntrada:
         raise
+
     except FileNotFoundError as error:
         raise ErrorEntrada(
             f"{nombre}: no existe el fichero"
         ) from error
+
     except Exception as error:
         raise ErrorEntrada(
             f"{nombre}: fichero corrupto o ilegible "
@@ -451,17 +794,26 @@ def a_tensor(
     fases_uint8: np.ndarray,
     config_espacial: ConfigEspacial | None = None,
 ) -> torch.Tensor:
+    config = config_espacial or ConfigEspacial()
+
     fases, _ = procesar_espacial(
         fases_uint8,
-        config_espacial,
+        config,
+    )
+
+    intensidades, _ = procesar_intensidad(
+        fases,
+        config,
     )
 
     x = torch.from_numpy(
-        np.array(fases, dtype=np.uint8)
-    ).float() / ESCALA
+        np.ascontiguousarray(intensidades)
+    )
 
     if not torch.isfinite(x).all():
-        raise ErrorEntrada("La imagen contiene valores no finitos")
+        raise ErrorEntrada(
+            "La imagen contiene valores no finitos"
+        )
 
     return x
 
@@ -480,7 +832,10 @@ def cargar_corte(
         )
     ])
 
-    return a_tensor(fases, config_espacial)
+    return a_tensor(
+        fases,
+        config_espacial,
+    )
 
 
 def cargar_corte_uint8(
@@ -494,8 +849,14 @@ def cargar_corte_uint8(
     )
 
     return np.stack([
-        _abrir_png(raiz / ruta, fase)
-        for ruta, fase in zip(rutas, FASES)
+        _abrir_png(
+            raiz / ruta,
+            fase,
+        )
+        for ruta, fase in zip(
+            rutas,
+            FASES,
+        )
     ])
 
 
@@ -507,7 +868,11 @@ def validar_subida(
     ficheros: dict[str, bytes],
     config_espacial: ConfigEspacial | None = None,
 ) -> torch.Tensor:
-    por_fase = {fase: [] for fase in FASES}
+    por_fase = {
+        fase: []
+        for fase in FASES
+    }
+
     identificadores = []
 
     for nombre in ficheros:
@@ -525,7 +890,11 @@ def validar_subida(
 
             if base.upper().endswith(sufijo):
                 por_fase[fase].append(nombre)
-                identificadores.append(base[:-len(sufijo)])
+
+                identificadores.append(
+                    base[:-len(sufijo)]
+                )
+
                 encontrada = True
                 break
 
@@ -535,11 +904,14 @@ def validar_subida(
             )
 
     faltan = [
-        fase for fase, nombres in por_fase.items()
+        fase
+        for fase, nombres in por_fase.items()
         if not nombres
     ]
+
     duplicadas = [
-        fase for fase, nombres in por_fase.items()
+        fase
+        for fase, nombres in por_fase.items()
         if len(nombres) > 1
     ]
 
@@ -554,7 +926,9 @@ def validar_subida(
         )
 
     if len(ficheros) != 3:
-        raise ErrorEntrada("Hay que subir exactamente tres archivos")
+        raise ErrorEntrada(
+            "Hay que subir exactamente tres archivos"
+        )
 
     if len(set(identificadores)) != 1:
         raise ErrorEntrada(
@@ -562,13 +936,16 @@ def validar_subida(
         )
 
     return cargar_corte(
-        *(ficheros[por_fase[fase][0]] for fase in FASES),
+        *(
+            ficheros[por_fase[fase][0]]
+            for fase in FASES
+        ),
         config_espacial=config_espacial,
     )
 
 
 # ---------------------------------------------------------------------
-# Aumento: después del procesamiento espacial, solo en train
+# Aumento geométrico conjunto: solo en train
 # ---------------------------------------------------------------------
 
 class AumentoGeometrico:
@@ -584,7 +961,10 @@ class AumentoGeometrico:
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if torch.rand(1).item() < self.p_volteo:
-            x = torch.flip(x, dims=[2])
+            x = torch.flip(
+                x,
+                dims=[2],
+            )
 
         angulo = math.radians(
             (torch.rand(1).item() * 2 - 1)
@@ -595,18 +975,24 @@ class AumentoGeometrico:
 
         dx = (
             (torch.rand(1).item() * 2 - 1)
-            * self.max_desplazamiento * 2 / ancho
+            * self.max_desplazamiento
+            * 2 / ancho
         )
+
         dy = (
             (torch.rand(1).item() * 2 - 1)
-            * self.max_desplazamiento * 2 / alto
+            * self.max_desplazamiento
+            * 2 / alto
         )
 
         coseno = math.cos(angulo)
         seno = math.sin(angulo)
 
         theta = torch.tensor(
-            [[coseno, -seno, dx], [seno, coseno, dy]],
+            [
+                [coseno, -seno, dx],
+                [seno, coseno, dy],
+            ],
             dtype=x.dtype,
             device=x.device,
         ).unsqueeze(0)
@@ -634,7 +1020,7 @@ class AumentoGeometrico:
 
 
 # ---------------------------------------------------------------------
-# Dataset y caché de imágenes originales
+# Dataset
 # ---------------------------------------------------------------------
 
 class DatasetCortes(Dataset):
@@ -661,13 +1047,20 @@ class DatasetCortes(Dataset):
         fila = self.filas.iloc[indice]
 
         if self.cache is None:
-            fases = cargar_corte_uint8(fila, self.raiz)
+            fases = cargar_corte_uint8(
+                fila,
+                self.raiz,
+            )
         else:
             fases = self.cache[
                 self.indice_cache[fila.sample_id]
             ]
 
-        x = a_tensor(fases, self.config_espacial)
+        # Mismo preprocesado tanto si se lee PNG como caché.
+        x = a_tensor(
+            fases,
+            self.config_espacial,
+        )
 
         if self.transform is not None:
             x = self.transform(x)
@@ -680,20 +1073,33 @@ class DatasetCortes(Dataset):
         return x, y
 
 
+# ---------------------------------------------------------------------
+# Caché: almacena las imágenes originales
+# ---------------------------------------------------------------------
+
 def construir_cache(
     samples: pd.DataFrame,
     ruta: Path = RUTA_CACHE,
 ):
-    """Guarda fases originales, sin registro ni recorte."""
+    """Guarda fases originales, sin registro, recorte ni normalización."""
 
-    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     temporal = ruta.with_suffix(".tmp.npy")
 
     array = np.lib.format.open_memmap(
         temporal,
         mode="w+",
         dtype=np.uint8,
-        shape=(len(samples), 3, TAMANO, TAMANO),
+        shape=(
+            len(samples),
+            3,
+            TAMANO,
+            TAMANO,
+        ),
     )
 
     inicio = time.time()
@@ -714,13 +1120,16 @@ def construir_cache(
 
     temporal.replace(ruta)
 
-    # Conserva el orden exacto para validar la correspondencia.
     ruta.with_suffix(".ids.json").write_text(
-        json.dumps(samples.sample_id.astype(str).tolist()),
+        json.dumps(
+            samples.sample_id.astype(str).tolist()
+        ),
         encoding="utf-8",
     )
 
-    print(f"Caché creada en {time.time() - inicio:.0f} s")
+    print(
+        f"Caché creada en {time.time() - inicio:.0f} s"
+    )
 
 
 def cargar_cache(
@@ -739,8 +1148,13 @@ def cargar_cache(
         )
         return None, None
 
-    ids = json.loads(ruta_ids.read_text(encoding="utf-8"))
-    ids_actuales = samples.sample_id.astype(str).tolist()
+    ids = json.loads(
+        ruta_ids.read_text(encoding="utf-8")
+    )
+
+    ids_actuales = (
+        samples.sample_id.astype(str).tolist()
+    )
 
     if ids != ids_actuales:
         print(
@@ -749,12 +1163,22 @@ def cargar_cache(
         )
         return None, None
 
-    array = np.load(ruta, mmap_mode="r")
+    array = np.load(
+        ruta,
+        mmap_mode="r",
+    )
 
-    forma = (len(samples), 3, TAMANO, TAMANO)
+    forma = (
+        len(samples),
+        3,
+        TAMANO,
+        TAMANO,
+    )
 
     if array.shape != forma or array.dtype != np.uint8:
-        print("AVISO: caché incompatible; se leerán PNG.")
+        print(
+            "AVISO: caché incompatible; se leerán PNG."
+        )
         return None, None
 
     return array, {
@@ -784,7 +1208,10 @@ def crear_dataloaders(
 ) -> dict:
     _requiere_utils()
 
-    samples = uc.cargar_samples(RAIZ_DATOS)
+    samples = uc.cargar_samples(
+        RAIZ_DATOS
+    )
+
     filas_tr, filas_va = uc.particion(
         samples,
         fold_val=fold_val,
@@ -798,11 +1225,16 @@ def crear_dataloaders(
                 .head(cantidad)
                 .patient_id
             )
+
             return filas[
                 filas.patient_id.isin(pacientes)
             ]
 
-        filas_tr = limitar(filas_tr, max_pacientes)
+        filas_tr = limitar(
+            filas_tr,
+            max_pacientes,
+        )
+
         filas_va = limitar(
             filas_va,
             max(2, max_pacientes // 2),
@@ -823,7 +1255,10 @@ def crear_dataloaders(
         if usar_cache else (None, None)
     )
 
-    aumento = AumentoGeometrico() if aumentar else None
+    aumento = (
+        AumentoGeometrico()
+        if aumentar else None
+    )
 
     dataset_train = DatasetCortes(
         filas_tr,
@@ -848,7 +1283,10 @@ def crear_dataloaders(
         config_espacial=config_espacial,
     )
 
-    generador = torch.Generator().manual_seed(semilla)
+    generador = torch.Generator().manual_seed(
+        semilla
+    )
+
     pin_memory = torch.cuda.is_available()
 
     train = DataLoader(
@@ -900,8 +1338,13 @@ def crear_dataloader_test(
 ):
     _requiere_utils()
 
-    samples = uc.cargar_samples(RAIZ_DATOS)
-    filas = uc.conjunto_test(samples).reset_index(drop=True)
+    samples = uc.cargar_samples(
+        RAIZ_DATOS
+    )
+
+    filas = uc.conjunto_test(
+        samples
+    ).reset_index(drop=True)
 
     cache, indice_cache = (
         cargar_cache(samples)
@@ -926,22 +1369,26 @@ def crear_dataloader_test(
 
 
 # ---------------------------------------------------------------------
-# Comprobación rápida
+# Comprobación rápida: no entrena ni evalúa el modelo en test
 # ---------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__
+    )
 
     parser.add_argument(
         "--construir-cache",
         action="store_true",
     )
+
     parser.add_argument(
         "--config",
         type=Path,
         default=None,
-        help="JSON con la configuración espacial",
+        help="JSON con la configuración del preprocesado",
     )
+
     parser.add_argument(
         "--max-pacientes",
         type=int,
@@ -949,6 +1396,7 @@ def main():
     )
 
     args = parser.parse_args()
+
     _requiere_utils()
 
     config = (
@@ -957,7 +1405,9 @@ def main():
     )
 
     if args.construir_cache:
-        construir_cache(uc.cargar_samples(RAIZ_DATOS))
+        construir_cache(
+            uc.cargar_samples(RAIZ_DATOS)
+        )
 
     datos = crear_dataloaders(
         fold_val=0,
@@ -966,16 +1416,47 @@ def main():
         config_espacial=config,
     )
 
-    x, y = next(iter(datos["train"]))
+    x, y = next(
+        iter(datos["train"])
+    )
 
-    print("Configuración espacial:", config.to_dict())
-    print("Forma de las imágenes:", tuple(x.shape))
-    print("Forma de las etiquetas:", tuple(y.shape))
-    print("Rango:", float(x.min()), float(x.max()))
-    print("Pos weight:", datos["pos_weight"])
-    print("Usa caché:", datos["usa_cache"])
+    print(
+        "Configuración del preprocesado:",
+        config.to_dict(),
+    )
 
-    assert x.shape[1:] == (3, TAMANO, TAMANO)
+    print(
+        "Forma de las imágenes:",
+        tuple(x.shape),
+    )
+
+    print(
+        "Forma de las etiquetas:",
+        tuple(y.shape),
+    )
+
+    print(
+        "Rango:",
+        float(x.min()),
+        float(x.max()),
+    )
+
+    print(
+        "Pos weight:",
+        datos["pos_weight"],
+    )
+
+    print(
+        "Usa caché:",
+        datos["usa_cache"],
+    )
+
+    assert x.shape[1:] == (
+        3,
+        TAMANO,
+        TAMANO,
+    )
+
     assert torch.isfinite(x).all()
     assert 0 <= x.min() and x.max() <= 1
 

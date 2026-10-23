@@ -1,0 +1,8 @@
+{
+  "cortes_seleccionados": 10,
+  "cortes_con_alerta": 10,
+  "errores": [],
+  "figuras": 10,
+  "test_consultado": false,
+  "nota": "Alertas heurísticas, sin inversión ni exclusión automática. Revisar datos fuente."
+}

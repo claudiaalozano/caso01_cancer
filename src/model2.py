@@ -42,6 +42,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
+from distribucion_probabilidades import dibujar_distribucion
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import preprocessing as pp
@@ -688,6 +689,7 @@ def dibujar_curvas(
     mejor: int,
     ruta: Path,
     titulo: str,
+    umbral: float = 0.3,
 ) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
 
@@ -743,7 +745,7 @@ def dibujar_curvas(
 
     fig.suptitle(
         f"{titulo}\n"
-        f"Recall y precisión: umbral 0,5 · "
+        f"Recall y precisión: umbral {umbral:g} · "
         f"mejor época por AUC: {mejor}",
         fontsize=10,
     )
@@ -843,18 +845,22 @@ def evaluar_test(
     )
 
     tabla.to_csv(carpeta / "test_pacientes.csv")
+    dibujar_distribucion(
+        tabla, carpeta / "distribucion_probabilidades_test.png",
+        umbral=umbral, titulo="Test: distribución por paciente",
+    )
 
     dibujar_matriz(
         met_umbral,
         carpeta / "matriz_confusion_test.png",
-        f"Test · umbral de validación {umbral:.3f}",
+        f"Test · umbral fijo {umbral:.3f}",
     )
 
     return {
         "pacientes": len(tabla),
         "umbral_0.5": met_05,
-        "umbral_validacion": umbral,
-        "metricas_umbral_validacion": met_umbral,
+        "umbral_fijo": umbral,
+        "metricas_umbral_fijo": met_umbral,
     }
 
 
@@ -910,6 +916,8 @@ def main():
     parser.add_argument("--rapido", action="store_true")
     parser.add_argument("--nombre", default=None)
     parser.add_argument("--test", action="store_true")
+    parser.add_argument("--umbral", type=float, default=0.3,
+                        help="Umbral fijo de clasificación, definido antes del test")
     parser.add_argument("--verificar", action="store_true")
     parser.add_argument(
         "--preprocesado-config",
@@ -918,6 +926,8 @@ def main():
     )
 
     args = parser.parse_args()
+    if not np.isfinite(args.umbral) or not 0 <= args.umbral <= 1:
+        parser.error("umbral debe estar entre 0 y 1")
 
     if args.epocas < 1 or args.paciencia < 1:
         parser.error("epocas y paciencia deben ser positivas")
@@ -1087,7 +1097,7 @@ def main():
     )
     print(
         "Recall y precisión: por paciente, pCR=1, "
-        "umbral fijo 0.5.\n"
+        f"umbral fijo {args.umbral:g}.\n"
     )
     print(
         f"{'época':>5} {'pérd_train':>10} "
@@ -1127,7 +1137,7 @@ def main():
         met, tabla = metricas_paciente(
             prob,
             datos["filas_val"],
-            umbral=0.5,
+            umbral=args.umbral,
         )
 
         if not np.isfinite(met["auc"]):
@@ -1173,6 +1183,7 @@ def main():
                 f"{nombre} · pérdida {args.perdida} "
                 f"· atención {args.atencion}"
             ),
+            umbral=args.umbral,
         )
 
         print(
@@ -1202,6 +1213,10 @@ def main():
         index_col=0,
     )
 
+    dibujar_distribucion(
+        tabla_mejor, carpeta / "distribucion_probabilidades_val.png",
+        umbral=args.umbral, titulo="Validación: distribución por paciente",
+    )
     umbral = umbral_youden(tabla_mejor)
 
     filas_mejor = pd.DataFrame({
@@ -1219,6 +1234,11 @@ def main():
         met_umbral,
         carpeta / "matriz_confusion_val.png",
         f"Validación · umbral Youden {umbral:.3f}",
+    )
+
+    dibujar_matriz(
+        mejores_metricas, carpeta / "matriz_confusion_val_umbral_fijo.png",
+        f"Validación · umbral fijo {args.umbral:g}",
     )
 
     config = {
@@ -1251,12 +1271,13 @@ def main():
             ),
             "modo_rapido": args.rapido,
             "agregacion_paciente": "media",
-            "umbral_curvas_recall_precision": 0.5,
+            "umbral_curvas_recall_precision": args.umbral,
             "clase_positiva": "pCR=1",
             "perdida_val_ponderada": False,
         },
         "validacion_mejor_epoca": {
-            "umbral_0.5": mejores_metricas,
+            "umbral_fijo": args.umbral,
+            "metricas_umbral_fijo": mejores_metricas,
             "umbral_youden": umbral,
             "con_umbral_youden": met_umbral,
         },
@@ -1299,13 +1320,13 @@ def main():
     if args.test:
         print(
             "\nEvaluando TEST con pesos y umbral "
-            "elegidos en validación..."
+            "fijados antes de consultar el test..."
         )
 
         config["test"] = evaluar_test(
             modelo,
             ruta_pesos,
-            umbral,
+            args.umbral,
             args,
             dispositivo,
             carpeta,
@@ -1320,7 +1341,7 @@ def main():
         f"AUC val por paciente: {mejor_auc:.3f}"
     )
     print(
-        f"Umbral 0.5 -> recall {m['recall']:.2f} | "
+        f"Umbral {args.umbral:g} -> recall {m['recall']:.2f} | "
         f"precisión {m['precision']:.2f} | "
         f"especificidad {m['especificidad']:.2f}"
     )
@@ -1336,7 +1357,7 @@ def main():
     )
 
     if config["test"] is not None:
-        mt = config["test"]["metricas_umbral_validacion"]
+        mt = config["test"]["metricas_umbral_fijo"]
 
         print(
             f"TEST -> AUC {mt['auc']:.3f} | "

@@ -31,7 +31,17 @@ def main():
     if not pesos.exists():raise FileNotFoundError(f'Faltan los pesos: {pesos}')
     if m.sha256(pesos)!=c['pesos']['sha256']:raise ValueError('El SHA-256 de los pesos no coincide')
     salida=carpeta/f'evaluacion_{a.conjunto}_u{a.umbral:g}'
-    if salida.exists():raise FileExistsError(f'Ya existe {salida}; reutiliza el CSV para dibujar sin repetir inferencia')
+    if salida.exists():
+        if a.conjunto == "test":
+            raise FileExistsError(
+                "Ya existe la evaluación de test; utiliza sus resultados guardados."
+            )
+
+        from datetime import datetime
+
+        salida = salida.with_name(
+            salida.name + "_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        )
     marca=carpeta/'evaluacion_test_iniciada.json'
     if a.conjunto=='test':
         if c.get('test') is not None or (carpeta/'test_pacientes.csv').exists() or marca.exists():

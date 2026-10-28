@@ -85,10 +85,24 @@ def representar_entrada(x, representacion):
     if representacion == "fases":
         return x
 
+    pre = x[:, 0]
+    early = x[:, 1]
+    late = x[:, 2]
+
     if representacion == "realce":
-        pre, early, late = x[:, 0], x[:, 1], x[:, 2]
         return torch.stack(
             (pre, early - pre, late - early),
+            dim=1,
+        )
+
+    if representacion == "realce4":
+        return torch.stack(
+            (
+                pre,
+                early - pre,
+                late - early,
+                late - pre,
+            ),
             dim=1,
         )
 
@@ -109,7 +123,7 @@ class CNNpCR(nn.Module):
             raise ValueError("Se necesitan cinco canales positivos")
         if not 0 <= dropout < 1:
             raise ValueError("dropout debe estar en [0,1)")
-        if representacion not in ("fases", "realce"):
+        if representacion not in ("fases", "realce", "realce4"):
             raise ValueError("Representación desconocida")
         if atencion not in ("ninguna", "spatial"):
             raise ValueError("Atención desconocida")
@@ -120,7 +134,7 @@ class CNNpCR(nn.Module):
         self.atencion = atencion
 
         bloques = []
-        c_in = 3
+        c_in = 4 if representacion == "realce4" else 3
 
         for numero, c_out in enumerate(canales, start=1):
             bloques.append(
@@ -180,11 +194,16 @@ class CNNpCR(nn.Module):
             "pooling_por_etapa": [True] * 5,
             "resolucion_final_hw": [8, 8],
             "representacion": self.representacion,
-            "canales_derivados": (
-                ["PRE", "EARLY-PRE", "LATE-EARLY"]
-                if self.representacion == "realce"
-                else ["PRE", "EARLY", "LATE"]
-            ),
+            "canales_derivados": {
+                "fases": ["PRE", "EARLY", "LATE"],
+                "realce": ["PRE", "EARLY-PRE", "LATE-EARLY"],
+                "realce4": [
+                    "PRE",
+                    "EARLY-PRE",
+                    "LATE-EARLY",
+                    "LATE-PRE",
+                ],
+            }[self.representacion],
             "atencion": self.atencion,
             "atencion_etapa": (
                 4 if self.atencion == "spatial" else None
@@ -712,7 +731,7 @@ def main():
     )
     parser.add_argument(
         "--representacion",
-        choices=["fases", "realce"],
+        choices=["fases", "realce", "realce4"],
         default="fases",
     )
     parser.add_argument(

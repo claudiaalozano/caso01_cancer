@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CNN propia de cinco etapas, entrenada desde cero.
+"""CNN propia de cinco etapas con LeakyReLU, entrenada desde cero.
 
 Entrada: PRE, EARLY, LATE, o representación de realce.
 Evaluación por paciente: media de probabilidades de sus cortes.
@@ -36,6 +36,7 @@ REPO = pp.REPO
 CANALES = (16, 32, 64, 128, 128)
 ENTRADA = (3, 256, 256)
 ATENCION_ETAPA = 4
+PENDIENTE_NEGATIVA = 0.01
 
 
 # ---------------------------------------------------------------------
@@ -68,7 +69,10 @@ def etapa(c_in, c_out, atencion=False):
     capas = [
         nn.Conv2d(c_in, c_out, 3, padding=1, bias=False),
         nn.BatchNorm2d(c_out),
-        nn.ReLU(inplace=True),
+        nn.LeakyReLU(
+            negative_slope=PENDIENTE_NEGATIVA,
+            inplace=True,
+        ),
     ]
     if atencion:
         capas.append(SpatialAttention(7))
@@ -164,8 +168,9 @@ class CNNpCR(nn.Module):
             if isinstance(modulo, nn.Conv2d):
                 nn.init.kaiming_normal_(
                     modulo.weight,
+                    a=PENDIENTE_NEGATIVA,
                     mode="fan_out",
-                    nonlinearity="relu",
+                    nonlinearity="leaky_relu",
                 )
             elif isinstance(modulo, nn.BatchNorm2d):
                 nn.init.ones_(modulo.weight)
@@ -184,7 +189,9 @@ class CNNpCR(nn.Module):
 
     def config(self):
         return {
-            "version": "cinco_etapas_cinco_poolings_v1",
+            "version": "cinco_etapas_cinco_poolings_leakyrelu_v2",
+            "activacion": "LeakyReLU",
+            "negative_slope": PENDIENTE_NEGATIVA,
             "canales": list(self.canales),
             "dropout": self.dropout,
             "entrada": list(ENTRADA),
@@ -803,7 +810,7 @@ def main():
     )
 
     nombre = args.nombre or (
-        f"cnn5_5pool_{args.perdida}_f{args.fold}"
+        f"cnn5_5pool_leakyrelu_{args.perdida}_f{args.fold}"
         f"_{args.representacion}_{args.atencion}"
     )
 
@@ -877,6 +884,7 @@ def main():
 
     print(f"Experimento: {nombre}")
     print("Arquitectura: 5 etapas, 5 MaxPooling, GAP final")
+    print(f"Activación: LeakyReLU (negative_slope={PENDIENTE_NEGATIVA:g})")
     print(f"Canales: {tuple(args.canales)}")
     print(f"Parámetros: {contar_parametros(modelo):,}")
     print(f"Representación: {args.representacion}")

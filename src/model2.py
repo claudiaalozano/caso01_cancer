@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""CNN de cuatro etapas para predecir pCR.
+"""CNN propia de cuatro etapas para predecir pCR.
 
-Entrada:
-    PRE, EARLY y LATE, o representación de realce.
+Adaptación inspirada en la estructura de cuatro bloques por rama
+de Braman et al. No reproduce su arquitectura completa.
 
 Arquitectura:
-    Etapa 1: Conv-BN-ReLU                 -> 16 x 256 x 256
-    Etapa 2: Conv-BN-ReLU-MaxPool         -> 32 x 128 x 128
-    Etapa 3: Conv-BN-ReLU-MaxPool         -> 64 x 64 x 64
-    Etapa 4: Conv-BN-ReLU-Spatial-MaxPool -> 128 x 32 x 32
-    GAP-Flatten-Dropout-Linear           -> 1 logit
+    Entrada: 3 x 256 x 256
+    Etapa 1: Conv-BN-ReLU                    -> 16 x 256 x 256
+    Etapa 2: Conv-BN-ReLU-MaxPool            -> 32 x 128 x 128
+    Etapa 3: Conv-BN-ReLU-MaxPool            -> 64 x 64 x 64
+    Etapa 4: Conv-BN-ReLU-Atención-MaxPool   -> 128 x 32 x 32
+    GAP-Flatten-Dropout-Linear              -> 1 logit
 
-La atención espacial actúa antes del último pooling, en mapas 64x64.
-No garantiza localizar el tumor.
-
-Validación por paciente: media de probabilidades de sus cortes.
-Mejor época y early stopping según AUC de validación.
-Test solo cuando se especifica --test.
+- Pesos entrenados desde cero.
+- Atención espacial opcional.
+- Evaluación por paciente: media de probabilidades de sus cortes.
+- Mejor época y early stopping según AUC de validación.
+- Gráficas de pérdida, recall y precisión.
+- Test solo si se especifica --test.
 """
 
 from __future__ import annotations
@@ -42,7 +43,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
-from distribucion_probabilidades import dibujar_distribucion
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import preprocessing as pp
@@ -59,7 +59,12 @@ ENTRADA = (3, 256, 256)
 # =====================================================================
 
 class SpatialAttention(nn.Module):
-    """Aprende una máscara espacial compartida por los canales."""
+    """Aprende una máscara espacial compartida por los canales.
+
+    No identifica explícitamente el tumor.
+    Entrada: [N, C, H, W].
+    Máscara: [N, 1, H, W].
+    """
 
     def __init__(self, kernel_size: int = 7):
         super().__init__()
@@ -79,8 +84,8 @@ class SpatialAttention(nn.Module):
     def calcular_mascara(self, x: torch.Tensor) -> torch.Tensor:
         media = torch.mean(x, dim=1, keepdim=True)
         maximo = torch.amax(x, dim=1, keepdim=True)
-        resumen = torch.cat((media, maximo), dim=1)
 
+        resumen = torch.cat((media, maximo), dim=1)
         return self.sigmoid(self.conv(resumen))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -188,6 +193,7 @@ class CNNpCR(nn.Module):
                 etapa(
                     c_in,
                     c_out,
+                    # La primera etapa conserva la resolución.
                     pooling=numero > 1,
                     atencion=(
                         atencion == "spatial" and numero == 4
@@ -356,7 +362,6 @@ def verificar_formas(modelo: CNNpCR) -> None:
 
         if modelo.atencion == "spatial":
             print("   Atención en mapas de 64x64. OK")
-
     finally:
         for manejador in manejadores:
             manejador.remove()
@@ -370,7 +375,7 @@ def verificar_aprendizaje(
     config_espacial=None,
     atencion: str = "spatial",
 ) -> None:
-    """Memoriza 10 cortes; no mide generalización."""
+    """Comprueba si memoriza 10 cortes; no mide generalización."""
     fijar_semilla(semilla)
 
     dispositivo = torch.device(
@@ -568,7 +573,6 @@ def metricas_paciente(
 
 
 def umbral_youden(tabla: pd.DataFrame) -> float:
-    """Selecciona el umbral exclusivamente en validación."""
     y = tabla.pCR.values
     p = tabla.prob.values
 
@@ -689,7 +693,6 @@ def dibujar_curvas(
     mejor: int,
     ruta: Path,
     titulo: str,
-    umbral: float = 0.3,
 ) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
 
@@ -745,11 +748,10 @@ def dibujar_curvas(
 
     fig.suptitle(
         f"{titulo}\n"
-        f"Recall y precisión: umbral {umbral:g} · "
+        f"Recall y precisión: umbral 0,5 · "
         f"mejor época por AUC: {mejor}",
         fontsize=10,
     )
-
     fig.tight_layout()
     fig.savefig(ruta, dpi=150)
     plt.close(fig)
@@ -845,22 +847,18 @@ def evaluar_test(
     )
 
     tabla.to_csv(carpeta / "test_pacientes.csv")
-    dibujar_distribucion(
-        tabla, carpeta / "distribucion_probabilidades_test.png",
-        umbral=umbral, titulo="Test: distribución por paciente",
-    )
 
     dibujar_matriz(
         met_umbral,
         carpeta / "matriz_confusion_test.png",
-        f"Test · umbral fijo {umbral:.3f}",
+        f"Test · umbral de validación {umbral:.3f}",
     )
 
     return {
         "pacientes": len(tabla),
         "umbral_0.5": met_05,
-        "umbral_fijo": umbral,
-        "metricas_umbral_fijo": met_umbral,
+        "umbral_validacion": umbral,
+        "metricas_umbral_validacion": met_umbral,
     }
 
 
@@ -916,8 +914,6 @@ def main():
     parser.add_argument("--rapido", action="store_true")
     parser.add_argument("--nombre", default=None)
     parser.add_argument("--test", action="store_true")
-    parser.add_argument("--umbral", type=float, default=0.3,
-                        help="Umbral fijo de clasificación, definido antes del test")
     parser.add_argument("--verificar", action="store_true")
     parser.add_argument(
         "--preprocesado-config",
@@ -926,8 +922,6 @@ def main():
     )
 
     args = parser.parse_args()
-    if not np.isfinite(args.umbral) or not 0 <= args.umbral <= 1:
-        parser.error("umbral debe estar entre 0 y 1")
 
     if args.epocas < 1 or args.paciencia < 1:
         parser.error("epocas y paciencia deben ser positivas")
@@ -1006,6 +1000,7 @@ def main():
     )
     ruta_pesos = REPO / "models" / f"{nombre}.pt"
 
+    # Evita sobreescribir experimentos anteriores accidentalmente.
     if (
         ruta_pesos.exists()
         or (carpeta.exists() and any(carpeta.iterdir()))
@@ -1048,8 +1043,6 @@ def main():
     criterio = nn.BCEWithLogitsLoss(
         pos_weight=peso_positivo
     )
-
-    # Mantiene la validación sin ponderar.
     criterio_val = nn.BCEWithLogitsLoss()
 
     optimizador = torch.optim.AdamW(
@@ -1097,7 +1090,7 @@ def main():
     )
     print(
         "Recall y precisión: por paciente, pCR=1, "
-        f"umbral fijo {args.umbral:g}.\n"
+        "umbral fijo 0.5.\n"
     )
     print(
         f"{'época':>5} {'pérd_train':>10} "
@@ -1126,18 +1119,16 @@ def main():
             optimizador,
             dispositivo,
         )
-
         perdida_val, prob = predecir(
             modelo,
             datos["val"],
             criterio_val,
             dispositivo,
         )
-
         met, tabla = metricas_paciente(
             prob,
             datos["filas_val"],
-            umbral=args.umbral,
+            umbral=0.5,
         )
 
         if not np.isfinite(met["auc"]):
@@ -1168,7 +1159,6 @@ def main():
             torch.save(modelo.state_dict(), ruta_pesos)
             tabla.to_csv(carpeta / "val_pacientes.csv")
             marca = "  * guardado"
-
         else:
             sin_mejora += 1
 
@@ -1179,11 +1169,7 @@ def main():
             hist,
             mejor_epoca,
             carpeta / "curvas.png",
-            (
-                f"{nombre} · pérdida {args.perdida} "
-                f"· atención {args.atencion}"
-            ),
-            umbral=args.umbral,
+            f"{nombre} · pérdida {args.perdida}",
         )
 
         print(
@@ -1213,10 +1199,6 @@ def main():
         index_col=0,
     )
 
-    dibujar_distribucion(
-        tabla_mejor, carpeta / "distribucion_probabilidades_val.png",
-        umbral=args.umbral, titulo="Validación: distribución por paciente",
-    )
     umbral = umbral_youden(tabla_mejor)
 
     filas_mejor = pd.DataFrame({
@@ -1234,11 +1216,6 @@ def main():
         met_umbral,
         carpeta / "matriz_confusion_val.png",
         f"Validación · umbral Youden {umbral:.3f}",
-    )
-
-    dibujar_matriz(
-        mejores_metricas, carpeta / "matriz_confusion_val_umbral_fijo.png",
-        f"Validación · umbral fijo {args.umbral:g}",
     )
 
     config = {
@@ -1271,13 +1248,12 @@ def main():
             ),
             "modo_rapido": args.rapido,
             "agregacion_paciente": "media",
-            "umbral_curvas_recall_precision": args.umbral,
+            "umbral_curvas_recall_precision": 0.5,
             "clase_positiva": "pCR=1",
             "perdida_val_ponderada": False,
         },
         "validacion_mejor_epoca": {
-            "umbral_fijo": args.umbral,
-            "metricas_umbral_fijo": mejores_metricas,
+            "umbral_0.5": mejores_metricas,
             "umbral_youden": umbral,
             "con_umbral_youden": met_umbral,
         },
@@ -1320,13 +1296,13 @@ def main():
     if args.test:
         print(
             "\nEvaluando TEST con pesos y umbral "
-            "fijados antes de consultar el test..."
+            "elegidos en validación..."
         )
 
         config["test"] = evaluar_test(
             modelo,
             ruta_pesos,
-            args.umbral,
+            umbral,
             args,
             dispositivo,
             carpeta,
@@ -1341,7 +1317,7 @@ def main():
         f"AUC val por paciente: {mejor_auc:.3f}"
     )
     print(
-        f"Umbral {args.umbral:g} -> recall {m['recall']:.2f} | "
+        f"Umbral 0.5 -> recall {m['recall']:.2f} | "
         f"precisión {m['precision']:.2f} | "
         f"especificidad {m['especificidad']:.2f}"
     )
@@ -1357,8 +1333,7 @@ def main():
     )
 
     if config["test"] is not None:
-        mt = config["test"]["metricas_umbral_fijo"]
-
+        mt = config["test"]["metricas_umbral_validacion"]
         print(
             f"TEST -> AUC {mt['auc']:.3f} | "
             f"recall {mt['recall']:.2f} | "

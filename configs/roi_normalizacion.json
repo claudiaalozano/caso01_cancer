@@ -2,6 +2,7 @@
   "registrar": false,
   "recortar": true,
   "roi": true,
+  "metodo_roi": "otsu",
   "umbral_roi": 5,
   "area_minima_roi": 64,
   "margen": 12,

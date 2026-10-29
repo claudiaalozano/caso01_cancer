@@ -1,0 +1,1 @@
+BreastDCEDL — Fridman et al. DOI: 10.1038/s41597-026-06589-6. PNG originales del conjunto docente público: https://storage.googleapis.com/usecasesf-breastdcedl-alumnos-8264/breastdcedl . Solo ejemplos de entrenamiento. Consultar LICENSE.txt. Sin modificaciones de los PNG.

@@ -69,10 +69,7 @@ def etapa(c_in, c_out, atencion=False):
     capas = [
         nn.Conv2d(c_in, c_out, 3, padding=1, bias=False),
         nn.BatchNorm2d(c_out),
-        nn.LeakyReLU(
-            negative_slope=PENDIENTE_NEGATIVA,
-            inplace=True,
-        ),
+        nn.ReLU(inplace=True),
     ]
     if atencion:
         capas.append(SpatialAttention(7))
@@ -168,9 +165,8 @@ class CNNpCR(nn.Module):
             if isinstance(modulo, nn.Conv2d):
                 nn.init.kaiming_normal_(
                     modulo.weight,
-                    a=PENDIENTE_NEGATIVA,
                     mode="fan_out",
-                    nonlinearity="leaky_relu",
+                    nonlinearity="relu",
                 )
             elif isinstance(modulo, nn.BatchNorm2d):
                 nn.init.ones_(modulo.weight)

@@ -1,0 +1,26 @@
+{
+  "conjunto": "test",
+  "pacientes": 176,
+  "perdida_BCE_por_corte_sin_ponderar": 0.724864,
+  "umbral": 0.3,
+  "metricas": {
+    "auc": 0.518178,
+    "sensibilidad": 0.45283,
+    "recall": 0.45283,
+    "precision": 0.27907,
+    "especificidad": 0.495935,
+    "accuracy": 0.482955,
+    "f1": 0.345324,
+    "VP": 24,
+    "VN": 61,
+    "FP": 62,
+    "FN": 29,
+    "recall_0": 0.495935,
+    "precision_0": 0.677778,
+    "recall_1": 0.45283,
+    "precision_1": 0.27907,
+    "exactitud_balanceada": 0.474383
+  },
+  "modo": "eval sin aumentos",
+  "pesos_sha256": "849af6921d8b14bade6c4ea8def93d3176c56068186585d211211234705c49a8"
+}

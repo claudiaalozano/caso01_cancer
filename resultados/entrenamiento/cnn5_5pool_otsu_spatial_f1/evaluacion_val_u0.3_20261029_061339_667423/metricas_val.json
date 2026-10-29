@@ -1,0 +1,26 @@
+{
+  "conjunto": "val",
+  "pacientes": 219,
+  "perdida_BCE_por_corte_sin_ponderar": 0.817132,
+  "umbral": 0.3,
+  "metricas": {
+    "auc": 0.555578,
+    "sensibilidad": 0.596774,
+    "recall": 0.596774,
+    "precision": 0.330357,
+    "especificidad": 0.522293,
+    "accuracy": 0.543379,
+    "f1": 0.425287,
+    "VP": 37,
+    "VN": 82,
+    "FP": 75,
+    "FN": 25,
+    "recall_0": 0.522293,
+    "precision_0": 0.766355,
+    "recall_1": 0.596774,
+    "precision_1": 0.330357,
+    "exactitud_balanceada": 0.559534
+  },
+  "modo": "eval sin aumentos",
+  "pesos_sha256": "849af6921d8b14bade6c4ea8def93d3176c56068186585d211211234705c49a8"
+}

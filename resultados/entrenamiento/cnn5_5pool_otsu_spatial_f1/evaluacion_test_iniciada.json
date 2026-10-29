@@ -1,0 +1,6 @@
+{
+  "umbral": 0.3,
+  "pesos_sha256": "849af6921d8b14bade6c4ea8def93d3176c56068186585d211211234705c49a8",
+  "fecha": "2026-10-29T06:18:14.275029",
+  "salida": "resultados/entrenamiento/cnn5_5pool_otsu_spatial_f1/evaluacion_test_u0.3_20261029_061814_274911"
+}

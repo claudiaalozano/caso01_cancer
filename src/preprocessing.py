@@ -1127,9 +1127,39 @@ def crear_dataloaders(
     _requiere_utils()
 
     samples = uc.cargar_samples(RAIZ_DATOS)
-    filas_tr, filas_va = uc.particion(
-        samples, fold_val=fold_val
+
+    # Exclusiones por calidad de imagen 
+    pacientes_excluidas = {"ISPY1_1148", "ISPY1_1193"}
+
+    # Conservamos `samples` completo para verificar el índice de la caché.
+    # El filtro se aplica solo a las filas usadas para train/validación.
+    excluir = (
+        samples["split"].eq("train")
+        & samples["patient_id"].isin(pacientes_excluidas)
     )
+
+    samples_desarrollo = samples.loc[~excluir].copy()
+
+    print(
+        "Exclusión por calidad: "
+        f"{samples.loc[excluir, 'patient_id'].nunique()} pacientes / "
+        f"{int(excluir.sum())} cortes de desarrollo."
+    )
+
+    filas_tr, filas_va = uc.particion(
+        samples_desarrollo,
+        fold_val=fold_val,
+    )
+
+    presentes = (
+        set(filas_tr["patient_id"])
+        | set(filas_va["patient_id"])
+    )
+
+    if presentes & pacientes_excluidas:
+        raise RuntimeError(
+            "Las pacientes excluidas siguen en train o validación"
+        )
 
     if max_pacientes:
         def limitar(filas, cantidad):

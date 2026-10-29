@@ -7,7 +7,6 @@ from PIL import Image
 
 st.set_page_config(
     page_title="Predicción de respuesta pCR",
-    page_icon="🔬",
     layout="wide",
 )
 

@@ -111,7 +111,7 @@ def etapa(
             bias=False,
         ),
         nn.BatchNorm2d(c_out),
-        nn.ReLU(inplace=True),
+        nn.LeakyReLU(negative_slope=0.01, inplace=True),
     ]
 
     if atencion:
@@ -216,10 +216,11 @@ class CNNpCR(nn.Module):
     def _inicializar(self):
         for modulo in self.modules():
             if isinstance(modulo, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    modulo.weight,
-                    mode="fan_out",
-                    nonlinearity="relu",
+                    nn.init.kaiming_normal_(
+                        modulo.weight,
+                        a=0.01,
+                        mode="fan_out",
+                        nonlinearity="leaky_relu",
                 )
 
             elif isinstance(modulo, nn.BatchNorm2d):

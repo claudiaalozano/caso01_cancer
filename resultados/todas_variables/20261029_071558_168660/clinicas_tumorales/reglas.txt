@@ -1,0 +1,19 @@
+|--- num__HRposHER2neg <= 0.50
+|   |--- num__tum_vol <= 94.79
+|   |   |--- num__HR <= 0.50
+|   |   |   |--- class: 1
+|   |   |--- num__HR >  0.50
+|   |   |   |--- class: 1
+|   |--- num__tum_vol >  94.79
+|   |   |--- class: 0
+|--- num__HRposHER2neg >  0.50
+|   |--- num__age <= 57.09
+|   |   |--- num__missingindicator_menopause <= 0.50
+|   |   |   |--- class: 0
+|   |   |--- num__missingindicator_menopause >  0.50
+|   |   |   |--- class: 0
+|   |--- num__age >  57.09
+|   |   |--- num__tum_vol <= 5.03
+|   |   |   |--- class: 0
+|   |   |--- num__tum_vol >  5.03
+|   |   |   |--- class: 0

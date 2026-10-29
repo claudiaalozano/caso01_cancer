@@ -1,0 +1,79 @@
+{
+  "fold_externo": 1,
+  "pacientes": 878,
+  "excluidas": [
+    "fold",
+    "pCR",
+    "patient_id",
+    "pid",
+    "sample_id",
+    "split",
+    "test"
+  ],
+  "omitidas_constantes_o_vacias": [
+    "pre"
+  ],
+  "max_depth": 3,
+  "min_samples_leaf": 30,
+  "cv": "5 particiones estratificadas por paciente, 3 repeticiones, solo entrenamiento",
+  "resumen": {
+    "clinicas_tumorales": {
+      "variables": [
+        "age",
+        "menopause",
+        "HR",
+        "HER2",
+        "HR_HER2_STATUS",
+        "TripleNeg",
+        "HER2pos",
+        "HRposHER2neg",
+        "tum_vol"
+      ],
+      "auc_media": 0.6654275269489668,
+      "auc_std_entre_particiones": 0.03938369138851222
+    },
+    "todas_auditoria": {
+      "variables": [
+        "n_xy",
+        "n_z",
+        "n_times",
+        "post_early",
+        "post_late",
+        "slice_thick",
+        "xy_spacing",
+        "mask_start",
+        "mask_end",
+        "sraw",
+        "eraw",
+        "scol",
+        "ecol",
+        "tum_vol",
+        "age",
+        "menopause",
+        "race_white",
+        "race_black",
+        "HR",
+        "HER2",
+        "HR_HER2_STATUS",
+        "TripleNeg",
+        "HER2pos",
+        "HRposHER2neg",
+        "dataset"
+      ],
+      "auc_media": 0.6570100516451814,
+      "auc_std_entre_particiones": 0.04327841958140684
+    }
+  },
+  "validacion_externa_evaluada": false,
+  "test_evaluado": false,
+  "advertencias": [
+    "Analisis exploratorio: no selecciona automaticamente variables para la CNN.",
+    "Subtipos e indicadores son redundantes con HR/HER2: pueden repartirse la importancia.",
+    "Importancia negativa o nula no demuestra ausencia de informacion.",
+    "Procedencia, adquisicion, coordenadas y faltantes pueden reflejar sesgos de cohorte.",
+    "Raza: auditoria descriptiva, no causalidad ni recomendacion de incluirla.",
+    "Verificar que volumen y variables tumorales esten disponibles antes del tratamiento.",
+    "Las metricas de CV son descriptivas; compararlas para seleccionar requiere validacion adicional.",
+    "La desviacion entre particiones no es un intervalo de confianza."
+  ]
+}

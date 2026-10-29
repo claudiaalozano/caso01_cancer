@@ -1,0 +1,10 @@
+variable,grupo,descenso_auc_media,descenso_auc_std,fraccion_particiones_descenso_positivo,faltantes_train,porcentaje_faltantes
+HRposHER2neg,clinica (subtipos redundantes con HR/HER2),0.10144762855817141,0.06487914008840329,0.8,3,0.3416856492027335
+HR_HER2_STATUS,clinica (subtipos redundantes con HR/HER2),0.02888440860215052,0.05994673813768713,0.2,3,0.3416856492027335
+tum_vol,tumoral: verificar momento y metodo de medicion,0.019626787071220543,0.024700965494230905,0.7333333333333333,1,0.11389521640091116
+HR,clinica (subtipos redundantes con HR/HER2),0.009341284371280421,0.010310270732820037,0.6666666666666666,2,0.22779043280182232
+age,clinica (subtipos redundantes con HR/HER2),0.0028272458593071857,0.007884153391471409,0.6666666666666666,3,0.3416856492027335
+HER2pos,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,3,0.3416856492027335
+HER2,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,3,0.3416856492027335
+TripleNeg,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,3,0.3416856492027335
+menopause,clinica (subtipos redundantes con HR/HER2),-0.0006398194099807026,0.00188792838996955,0.0,104,11.845102505694761

@@ -1,0 +1,22 @@
+|--- marcadores__HR <= 0.50
+|   |--- marcadores__HER2 <= 0.50
+|   |   |--- edad__age <= 60.06
+|   |   |   |--- class: 1
+|   |   |--- edad__age >  60.06
+|   |   |   |--- class: 0
+|   |--- marcadores__HER2 >  0.50
+|   |   |--- edad__age <= 54.59
+|   |   |   |--- class: 1
+|   |   |--- edad__age >  54.59
+|   |   |   |--- class: 1
+|--- marcadores__HR >  0.50
+|   |--- marcadores__HER2 <= 0.50
+|   |   |--- edad__age <= 57.09
+|   |   |   |--- class: 0
+|   |   |--- edad__age >  57.09
+|   |   |   |--- class: 0
+|   |--- marcadores__HER2 >  0.50
+|   |   |--- edad__age <= 46.73
+|   |   |   |--- class: 0
+|   |   |--- edad__age >  46.73
+|   |   |   |--- class: 1

@@ -1,4 +1,4 @@
-"""Comparación exploratoria en validación: CNN congelada + HR/HER2. Nunca carga test."""
+"""Comparación exploratoria en validación: CNN congelada + HR/HER2/edad. Nunca carga test."""
 import argparse
 import hashlib
 import json
@@ -21,6 +21,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import model3 as m
 import preprocessing as pp
+
+
+VARIABLES_CLINICAS = ["HR", "HER2", "age"]
+VERSION = "hr_her2_edad_v2"
 
 
 def sha(path):
@@ -84,6 +88,8 @@ def main():
     ap.add_argument('--C', type=float, default=0.1,
                     help='Regularización logística: menor C implica más regularización')
     a = ap.parse_args()
+    print(f'Script: {Path(__file__).resolve()}', flush=True)
+    print(f'Versión: {VERSION} | Variables clínicas: {VARIABLES_CLINICAS}', flush=True)
     if a.batch < 1 or a.workers < 0 or not 0 < a.umbral < 1 or a.C <= 0:
         ap.error('Argumentos fuera de rango')
     carpeta = pp.REPO / 'resultados' / 'entrenamiento' / a.experimento
@@ -120,7 +126,8 @@ def main():
     pacientes = pd.read_csv(pacientes_path, dtype={'pid': str})
     if pacientes.pid.duplicated().any():
         raise ValueError('patients.csv contiene pacientes duplicadas')
-    clin = pacientes.set_index('pid')[['HR', 'HER2', 'age', 'pCR']].copy()
+    pacientes = pacientes.loc[pacientes['pid'].isin(set(tr.patient_id) | set(va.patient_id))].copy()
+    clin = pacientes.set_index('pid')[VARIABLES_CLINICAS + ['pCR']].copy()
     clin['age'] = pd.to_numeric(clin['age'], errors='raise')
     if not np.isfinite(clin['age'].dropna()).all():
         raise ValueError('La edad contiene valores no finitos')
@@ -136,9 +143,7 @@ def main():
             raise ValueError('Faltan pacientes en patients.csv')
         if not np.array_equal(tabla.pCR.to_numpy(), clin.loc[tabla.index, 'pCR'].to_numpy()):
             raise ValueError('Etiquetas discordantes entre samples y patients')
-        tabla[['HR', 'HER2', 'age']] = clin.loc[
-        tabla.index, ['HR', 'HER2', 'age']
-    ]
+        tabla[VARIABLES_CLINICAS] = clin.loc[tabla.index, VARIABLES_CLINICAS]
         tablas[nombre] = tabla
     # Verifica la CNN contra las probabilidades originales antes de ajustar la fusión.
     original = pd.read_csv(carpeta / 'val_pacientes.csv', dtype={'patient_id': str}).set_index('patient_id')
@@ -151,8 +156,8 @@ def main():
     salida = pp.REPO / 'resultados' / 'combinados' / datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     salida.mkdir(parents=True)
     resultados, modelos = [], {}
-    for nombre, columnas in [('solo_cnn', None), ('solo_clinica', ['HR', 'HER2', 'age']),
-                                ('cnn_clinica', cols_imagen + ['HR', 'HER2', 'age'])]:
+    for nombre, columnas in [('solo_cnn', None), ('solo_clinica', VARIABLES_CLINICAS),
+                                ('cnn_clinica', cols_imagen + VARIABLES_CLINICAS)]:
         if columnas is None:
             predicciones = {k: t.prob_cnn.to_numpy() for k, t in tablas.items()}
         else:
@@ -190,14 +195,16 @@ def main():
     joblib.dump(modelos, salida / 'clasificadores.joblib')
     guardar(salida / 'config.json', dict(experimento_cnn=a.experimento,
         pesos_sha256=sha(pesos), config_cnn=c, config_cnn_sha256=sha(config_path),
-        patients_sha256=sha(pacientes_path), variables_clinicas=['HR', 'HER2'],
+        patients_sha256=sha(pacientes_path), variables_clinicas=VARIABLES_CLINICAS, version_script=VERSION,
+        script_sha256=sha(Path(__file__)),
+        columnas_por_modelo={k: v['columnas'] for k, v in modelos.items()},
         umbral=a.umbral, C=a.C, class_weight='balanced',
         agregacion_caracteristicas='media por paciente', cnn_congelada=True,
         exclusiones='Mismas pacientes que en la validación original',
         test_consultado_por_este_script=False,
         limitacion='Experimento exploratorio posterior al test del modelo de imagen; no evaluación final independiente',
-        faltantes_train=tablas['train'][['HR', 'HER2']].isna().sum().astype(int).to_dict(),
-        faltantes_val=tablas['val'][['HR', 'HER2']].isna().sum().astype(int).to_dict()))
+        faltantes_train=tablas['train'][VARIABLES_CLINICAS].isna().sum().astype(int).to_dict(),
+        faltantes_val=tablas['val'][VARIABLES_CLINICAS].isna().sum().astype(int).to_dict()))
     print(resumen.loc[resumen.conjunto.eq('val')].to_string(index=False))
     print(f'Resultados: {salida}')
     print('No se ha realizado inferencia en test. Las métricas de train son de ajuste, no de generalización.')

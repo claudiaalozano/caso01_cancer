@@ -1,0 +1,19 @@
+|--- num__HRposHER2neg <= 0.50
+|   |--- num__tum_vol <= 94.79
+|   |   |--- num__sraw <= 132.50
+|   |   |   |--- class: 1
+|   |   |--- num__sraw >  132.50
+|   |   |   |--- class: 1
+|   |--- num__tum_vol >  94.79
+|   |   |--- class: 0
+|--- num__HRposHER2neg >  0.50
+|   |--- num__mask_start <= 38.50
+|   |   |--- num__eraw <= 175.50
+|   |   |   |--- class: 0
+|   |   |--- num__eraw >  175.50
+|   |   |   |--- class: 0
+|   |--- num__mask_start >  38.50
+|   |   |--- num__tum_vol <= 11.00
+|   |   |   |--- class: 1
+|   |   |--- num__tum_vol >  11.00
+|   |   |   |--- class: 0

@@ -1,0 +1,26 @@
+variable,grupo,descenso_auc_media,descenso_auc_std,fraccion_particiones_descenso_positivo,faltantes_train,porcentaje_faltantes
+HRposHER2neg,clinica (subtipos redundantes con HR/HER2),0.11090581226842043,0.06702970401378561,0.8,3,0.3416856492027335
+HR_HER2_STATUS,clinica (subtipos redundantes con HR/HER2),0.03130117866004963,0.06493652645671846,0.2,3,0.3416856492027335
+tum_vol,tumoral: verificar momento y metodo de medicion,0.019097701352323686,0.02002430665068295,0.8666666666666667,1,0.11389521640091116
+mask_start,procedencia/adquisicion/localizacion: auditoria,0.0029798614053138063,0.011672566871638554,0.6666666666666666,0,0.0
+age,clinica (subtipos redundantes con HR/HER2),0.002363922848285556,0.006604876207973476,0.3333333333333333,3,0.3416856492027335
+eraw,procedencia/adquisicion/localizacion: auditoria,0.0021536814003375797,0.005025126035984317,0.4666666666666667,0,0.0
+sraw,procedencia/adquisicion/localizacion: auditoria,0.001381285850699697,0.009358233827224286,0.3333333333333333,0,0.0
+n_z,procedencia/adquisicion/localizacion: auditoria,0.000530539920783822,0.0020547722776939445,0.06666666666666667,0,0.0
+n_xy,procedencia/adquisicion/localizacion: auditoria,0.0,0.0,0.0,0,0.0
+HER2,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,3,0.3416856492027335
+TripleNeg,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,3,0.3416856492027335
+slice_thick,procedencia/adquisicion/localizacion: auditoria,0.0,0.0,0.0,0,0.0
+xy_spacing,procedencia/adquisicion/localizacion: auditoria,0.0,0.0,0.0,0,0.0
+n_times,procedencia/adquisicion/localizacion: auditoria,0.0,0.0,0.0,0,0.0
+post_early,procedencia/adquisicion/localizacion: auditoria,0.0,0.0,0.0,0,0.0
+menopause,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,104,11.845102505694761
+race_white,demografia: solo auditoria de sesgo,0.0,0.0,0.0,3,0.3416856492027335
+HER2pos,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,3,0.3416856492027335
+dataset,procedencia/adquisicion/localizacion: auditoria,0.0,0.0,0.0,0,0.0
+HR,clinica (subtipos redundantes con HR/HER2),0.0,0.0,0.0,2,0.22779043280182232
+race_black,demografia: solo auditoria de sesgo,0.0,0.0,0.0,3,0.3416856492027335
+scol,procedencia/adquisicion/localizacion: auditoria,-0.00019385856079404983,0.0006370100780038462,0.0,0,0.0
+ecol,procedencia/adquisicion/localizacion: auditoria,-0.001647022332506199,0.006378890064628203,0.0,0,0.0
+mask_end,procedencia/adquisicion/localizacion: auditoria,-0.0021930373149885367,0.006768712127041092,0.0,0,0.0
+post_late,procedencia/adquisicion/localizacion: auditoria,-0.00326610381488431,0.008622672390797984,0.0,0,0.0

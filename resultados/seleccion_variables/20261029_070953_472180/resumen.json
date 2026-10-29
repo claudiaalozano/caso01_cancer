@@ -1,0 +1,19 @@
+{
+  "variables": [
+    "age",
+    "HR",
+    "HER2",
+    "menopause"
+  ],
+  "fold_externo_reservado": 1,
+  "pacientes": 878,
+  "max_depth": 3,
+  "min_samples_leaf": 30,
+  "class_weight": "balanced",
+  "cv": "5 particiones estratificadas por paciente, 3 repeticiones dentro de entrenamiento",
+  "auc_cv_media": 0.6821573211079507,
+  "auc_cv_std": 0.03093923502487176,
+  "validacion_externa_evaluada": false,
+  "test_evaluado": false,
+  "nota": "Importancias exploratorias, no selección automática. La desviación entre particiones no es un intervalo de confianza. Las variables correlacionadas pueden compartir importancia; no demuestra aporte adicional a la CNN. Los nodos contienen recuentos ponderados, no prevalencias clínicas."
+}

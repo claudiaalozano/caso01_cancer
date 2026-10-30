@@ -1027,15 +1027,26 @@ botonCombinado.addEventListener("click",async()=>{
   titulo,
   `Predicción del corte: pCR=${p >= config.umbral ? 1 : 0} · corte ${id}`
 );
-      texto(explicacion,
-        `Corte añadido a ${paciente}. Preprocesado e inferencia: ${(performance.now()-inicio).toFixed(0)} ms. `+
-        "La salida es una puntuación del modelo, no una probabilidad clínica calibrada."
+            const claseCorte = p >= config.umbral ? 1 : 0;
+
+      texto(puntuacion, (100 * p).toFixed(2) + " %");
+
+      texto(
+        titulo,
+        `Predicción del corte: pCR=${claseCorte} · corte ${id}`
       );
-      dibujarPaciente();
-    } catch(error) {
-      texto(titulo,"No se ha analizado el corte");texto(explicacion,error.message);texto(puntuacion,"—");
-    } finally {ocupado=false;actualizarBoton();dibujarPaciente();}
-  });
+
+      texto(
+        explicacion,
+        (claseCorte === 1
+          ? "Predice respuesta patológica completa tras el tratamiento. "
+          : "Predice que no se alcanzará respuesta patológica completa tras el tratamiento. ") +
+        `Puntuación: ${(100 * p).toFixed(2)} %. ` +
+        `Umbral: ${(100 * config.umbral).toFixed(0)} %. ` +
+        `Corte añadido a ${paciente}. ` +
+        "El resultado por paciente utiliza la media de los cortes aportados. " +
+        "La puntuación no indica cuánto cáncer hay y no es una probabilidad clínica calibrada."
+      );
 
   limpiar.addEventListener("click",()=>{
     if(ocupado) return;

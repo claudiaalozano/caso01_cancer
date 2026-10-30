@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>DCE / LAB · Predicción de pCR</title>
+
+  <meta
+    name="description"
+    content="Proyecto académico de aprendizaje automático sobre predicción
+    de respuesta patológica completa mediante resonancia DCE de mama."
+  >
+
+  <link rel="stylesheet" href="./style.css">
+
+  <script src="./examples.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#inicio">
+      DCE<span> / </span>LAB
+    </a>
+
+    <p class="tiny">
+      IMAGEN · APRENDIZAJE · RESPUESTA
+    </p>
+
+    <nav aria-label="Navegación principal">
+      <a class="active" href="#inicio">Inicio</a>
+      <a href="#proyecto">Proyecto y datos</a>
+      <a href="#modelo">La CNN</a>
+      <a href="#experimentos">Experimentos</a>
+      <a href="#resultados">Resultados</a>
+      <a href="#analisis">Explorar imágenes</a>
+    </nav>
+
+    <div class="aside-end">
+      <span class="dot"></span>
+      Proyecto académico
+
+      <small>
+        Aprendizaje Automático<br>
+        Claudia Lozano Pérez
+      </small>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <span>BREAST DCE MRI</span>
+      <span class="tag">Uso educativo · Sin validez clínica</span>
+    </header>
+
+    <!-- PRESENTACIÓN -->
+    <section id="inicio" class="hero">
+      <div class="orbit" aria-hidden="true"></div>
+
+      <div class="eyebrow">
+        EXPLORADOR DE RESPUESTA AL TRATAMIENTO
+      </div>
+
+      <h1>
+        Tres fases.<br>
+        <em>Una misma mirada.</em>
+      </h1>
+
+      <p class="intro">
+        Estudiamos si una red neuronal convolucional puede anticipar
+        la respuesta patológica completa al tratamiento utilizando
+        resonancias de mama obtenidas antes de iniciarlo.
+      </p>
+
+      <a class="button-link" href="#analisis">
+        Explorar un estudio ↗
+      </a>
+
+      <div class="notice">
+        Esta aplicación es un proyecto educativo. No diagnostica,
+        no recomienda tratamientos y no tiene validez clínica.
+      </div>
+    </section>
+
+    <!-- PROYECTO -->
+    <section id="proyecto">
+      <div class="eyebrow">COMPRENDER LOS DATOS</div>
+
+      <h2>Anticipar la respuesta, a partir de la imagen</h2>
+
+      <p>
+        El objetivo no es simplemente localizar un tumor. Buscamos
+        predecir si una paciente alcanzará respuesta patológica completa
+        después del tratamiento, a partir de información previa.
+      </p>
+
+      <div class="facts">
+        <article>
+          <b>pCR = 1</b>
+          <h3>Respuesta completa</h3>
+          <p>
+            Indica que se alcanzó respuesta patológica completa,
+            según la definición utilizada en el dataset.
+          </p>
+        </article>
+
+        <article>
+          <b>pCR = 0</b>
+          <h3>Sin respuesta completa</h3>
+          <p>
+            No se alcanzó esa respuesta completa. Esto no significa
+            necesariamente que el tratamiento no produjera respuesta.
+          </p>
+        </article>
+
+        <article>
+          <b>UNIDAD DE EVALUACIÓN</b>
+          <h3>Una paciente</h3>
+          <p>
+            La CNN procesa cortes. La evaluación por paciente utiliza
+            la media de las probabilidades de sus cortes.
+          </p>
+        </article>
+      </div>
+
+      <h3>El dataset BreastDCEDL</h3>
+
+      <p>
+        El conjunto docente combina datos procedentes de I-SPY1,
+        I-SPY2 y Duke. Estas cohortes presentan diferencias de adquisición
+        y de selección de cortes que pueden influir en el aprendizaje.
+      </p>
+
+      <div class="facts">
+        <article>
+          <b>1.097 PACIENTES</b>
+          <h3>Desarrollo</h3>
+          <p>
+            10.945 cortes para entrenamiento y validación interna
+            antes de las exclusiones adicionales por calidad.
+          </p>
+        </article>
+
+        <article>
+          <b>176 PACIENTES</b>
+          <h3>Test público</h3>
+          <p>
+            1.758 cortes utilizados para evaluar el modelo original
+            de imagen después de cerrar sus decisiones.
+          </p>
+        </article>
+
+        <article>
+          <b>29,4 % pCR = 1</b>
+          <h3>Clases desbalanceadas</h3>
+          <p>
+            En desarrollo hay 322 pacientes pCR=1 y 775 pacientes
+            pCR=0. La accuracy aislada puede resultar engañosa.
+          </p>
+        </article>
+      </div>
+
+      <details>
+        <summary>Cómo evitamos mezclar pacientes</summary>
+        <p>
+          Todos los cortes de una paciente permanecen en la misma
+          partición. Los folds se definen por paciente, evitando
+          que la red encuentre la misma anatomía en entrenamiento
+          y validación.
+        </p>
+        <p>
+          Las exclusiones adicionales por calidad se documentan
+          por experimento y pueden modificar los recuentos.
+        </p>
+      </details>
+    </section>
+
+    <!-- FASES Y MODELO -->
+    <section id="modelo">
+      <div class="eyebrow">DE LAS FASES A LA PREDICCIÓN</div>
+
+      <h2>Una CNN propia, entrenada desde cero</h2>
+
+      <div class="facts">
+        <article>
+          <b>PRE</b>
+          <h3>Antes del contraste</h3>
+          <p>
+            Proporciona la referencia anatómica y la intensidad inicial.
+          </p>
+        </article>
+
+        <article>
+          <b>EARLY</b>
+          <h3>Fase temprana</h3>
+          <p>
+            Recoge los cambios tempranos tras administrar contraste.
+          </p>
+        </article>
+
+        <article>
+          <b>LATE</b>
+          <h3>Fase tardía</h3>
+          <p>
+            Completa la información temporal del mismo corte.
+          </p>
+        </article>
+      </div>
+
+      <p>
+        Los tres canales representan fases temporales, no colores RGB.
+        La diferencia EARLY − PRE permite inspeccionar el realce.
+        El modelo seleccionado recibe las tres fases procesadas.
+      </p>
+
+      <div class="architecture">
+        Entrada: 3 × 256 × 256<br>
+        ↓<br>
+        Etapa 1: Conv · BatchNorm · ReLU · MaxPooling<br>
+        ↓<br>
+        Etapa 2: Conv · BatchNorm · ReLU · MaxPooling<br>
+        ↓<br>
+        Etapa 3: Conv · BatchNorm · ReLU · MaxPooling<br>
+        ↓<br>
+        Etapa 4: Conv · BatchNorm · ReLU · Atención espacial · MaxPooling<br>
+        ↓<br>
+        Etapa 5: Conv · BatchNorm · ReLU · MaxPooling<br>
+        ↓<br>
+        Global Average Pooling · Dropout · Capa lineal<br>
+        ↓<br>
+        Un logit → Sigmoide → Puntuación de pCR=1
+      </div>
+
+      <div class="facts">
+        <article>
+          <b>CAPACIDAD</b>
+          <h3>245.619 parámetros</h3>
+          <p>
+            Canales 16, 32, 64, 128 y 128.
+            Cinco convoluciones principales y otra en la atención.
+          </p>
+        </article>
+
+        <article>
+          <b>ATENCIÓN ESPACIAL</b>
+          <h3>Ponderación de regiones</h3>
+          <p>
+            Modula las posiciones de los mapas de características.
+            No garantiza que la red localice el tumor.
+          </p>
+        </article>
+
+        <article>
+          <b>SALIDA</b>
+          <h3>Una puntuación</h3>
+          <p>
+            La sigmoide produce un valor entre 0 y 1.
+            No se ha demostrado que esté calibrado.
+          </p>
+        </article>
+      </div>
+
+      <details>
+        <summary>Preprocesado compartido entre fases</summary>
+        <p>
+          Recorte de primer plano mediante Otsu, margen de 12 píxeles,
+          conservación de la proporción y salida de 256 × 256 mediante
+          redimensionado y padding. La normalización utiliza una escala
+          común para PRE, EARLY y LATE.
+        </p>
+        <p>
+          Este ROI no constituye una segmentación anatómica de la mama
+          ni una segmentación del tumor. Registro y CLAHE permanecen
+          desactivados en la configuración seleccionada.
+        </p>
+      </details>
+
+      <details>
+        <summary>Aumentos solo durante entrenamiento</summary>
+        <p>
+          Volteo horizontal, rotación de hasta ±10° y desplazamiento
+          de hasta ±8 píxeles. Las transformaciones geométricas se
+          aplican conjuntamente a las tres fases.
+        </p>
+        <p>
+          En validación, test e inferencia no se aplican estos aumentos.
+        </p>
+      </details>
+    </section>
+
+    <!-- EXPERIMENTOS -->
+    <section id="experimentos">
+      <div class="eyebrow">DECISIONES REPRODUCIBLES</div>
+
+      <h2>Aprender también de lo que no mejora</h2>
+
+      <p>
+        Se exploraron arquitecturas, representaciones de realce,
+        mecanismos de atención y regularización. Cada experimento
+        conserva su configuración y sus resultados.
+      </p>
+
+      <div class="facts">
+        <article>
+          <b>OPTIMIZACIÓN</b>
+          <h3>AdamW</h3>
+          <p>
+            Learning rate 0,0003 · batch 128 · weight decay 0,0001 ·
+            dropout 0,3 · semilla 42 en el experimento original elegido.
+          </p>
+        </article>
+
+        <article>
+          <b>DESBALANCE</b>
+          <h3>Pérdida ponderada</h3>
+          <p>
+            BCEWithLogitsLoss con pos_weight calculado a partir
+            de los cortes de entrenamiento. En el modelo original: 2,372.
+          </p>
+        </article>
+
+        <article>
+          <b>SELECCIÓN DEL CHECKPOINT</b>
+          <h3>AUC de validación</h3>
+          <p>
+            Máximo de 30 épocas y paciencia de 10.
+            En el experimento original se seleccionó la época 12.
+          </p>
+        </article>
+      </div>
+
+      <details>
+        <summary>Validación cruzada con cinco folds</summary>
+
+        <p>
+          Los checkpoints seleccionados obtuvieron un AUC medio
+          de validación por paciente de 0,566 ± 0,014.
+          La desviación estándar describe variabilidad entre folds;
+          no es un intervalo de confianza.
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <caption>Resultados de los checkpoints seleccionados</caption>
+            <thead>
+              <tr>
+                <th>Fold</th>
+                <th>Época</th>
+                <th>AUC train</th>
+                <th>AUC validación</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>0</td><td>22</td><td>0,861</td><td>0,565</td></tr>
+              <tr><td>1</td><td>4</td><td>0,650</td><td>0,552</td></tr>
+              <tr><td>2</td><td>1</td><td>0,568</td><td>0,589</td></tr>
+              <tr><td>3</td><td>7</td><td>0,671</td><td>0,559</td></tr>
+              <tr><td>4</td><td>3</td><td>0,621</td><td>0,566</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>
+          La capacidad discriminativa es limitada y persisten
+          señales de sobreajuste, especialmente en el fold 0.
+          La validación cruzada permite observar esta variabilidad,
+          pero no elimina por sí misma el sobreajuste.
+        </p>
+      </details>
+
+      <details>
+        <summary>Comparación con datos clínicos</summary>
+
+        <p>
+          Los modelos clínicos son comparaciones adicionales.
+          La CNN basada en imágenes sigue siendo el modelo principal
+          exigido por el caso.
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <caption>Validación interna · no son resultados de test</caption>
+            <thead>
+              <tr>
+                <th>Variables clínicas</th>
+                <th>Solo clínica: AUC</th>
+                <th>CNN + clínica: AUC</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>HR + HER2</td>
+                <td>0,646</td>
+                <td>0,598</td>
+              </tr>
+              <tr>
+                <td>HR + HER2 + edad</td>
+                <td>0,697</td>
+                <td>0,612</td>
+              </tr>
+              <tr>
+                <td>HR + HER2 + edad + volumen</td>
+                <td>0,715</td>
+                <td>0,613</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>
+          La combinación utiliza 128 características de imagen
+          promediadas por paciente y una regresión logística.
+          La CNN permanece congelada.
+        </p>
+
+        <p>
+          El combinado no superó al modelo clínico y mostró
+          sobreajuste. La comparabilidad del volumen tumoral
+          entre cohortes sigue pendiente de aclaración.
+        </p>
+      </details>
+    </section>
+
+    <!-- RESULTADOS -->
+    <section id="resultados">
+      <div class="eyebrow">EVALUACIÓN Y LIMITACIONES</div>
+
+      <h2>Los resultados, sin ocultar los errores</h2>
+
+      <p>
+        El modelo original de imagen se evaluó en 176 pacientes de test
+        con el umbral 0,3 fijado previamente. Sus resultados no equivalen
+        a los de un ensemble de cinco folds.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <caption>
+            Modelo original · test · umbral 0,3
+          </caption>
+          <thead>
+            <tr>
+              <th>Clase real</th>
+              <th>Predice pCR=0</th>
+              <th>Predice pCR=1</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>pCR=0</th>
+              <td>61</td>
+              <td>62</td>
+            </tr>
+            <tr>
+              <th>pCR=1</th>
+              <td>29</td>
+              <td>24</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="facts">
+        <article>
+          <b>AUC TEST</b>
+          <h3>0,518</h3>
+          <p>
+            Capacidad discriminativa cercana a 0,5.
+            No demuestra utilidad clínica.
+          </p>
+        </article>
+
+        <article>
+          <b>RECALL · CLASES 0 / 1</b>
+          <h3>49,6 % / 45,3 %</h3>
+          <p>
+            Proporción de pacientes reales de cada clase
+            correctamente identificadas.
+          </p>
+        </article>
+
+        <article>
+          <b>PRECISIÓN · CLASES 0 / 1</b>
+          <h3>67,8 % / 27,9 %</h3>
+          <p>
+            Proporción de aciertos dentro de cada clase predicha.
+          </p>
+        </article>
+      </div>
+
+      <details>
+        <summary>Por qué cambiar el umbral no cambia el AUC</summary>
+        <p>
+          El umbral convierte puntuaciones en clases.
+          Al aumentarlo se predicen menos unos y más ceros.
+          Esto redistribuye los errores, pero no modifica
+          el orden de las puntuaciones ni el AUC.
+        </p>
+        <p>
+          En los cinco folds se compararon varios umbrales
+          sobre validación. Ese análisis no reemplaza la evaluación
+          original de test ni constituye una evaluación independiente.
+        </p>
+      </details>
+
+      <details>
+        <summary>La referencia de predecir siempre pCR=0</summary>
+        <p>
+          En test, esa regla acertaría 123 de 176 pacientes:
+          una accuracy del 69,9 %, pero recall de pCR=1 igual a cero.
+          La CNN obtuvo una accuracy del 48,3 %.
+        </p>
+        <p>
+          Por eso se deben presentar las métricas de ambas clases,
+          la matriz de confusión y la exactitud balanceada,
+          además de la accuracy.
+        </p>
+      </details>
+
+      <details>
+        <summary>Análisis que todavía falta completar</summary>
+        <p>
+          Intervalos de confianza, calibración, revisión visual
+          de errores y análisis completo del test por cohorte.
+          Las estadísticas pueden obtenerse de las predicciones
+          guardadas, sin utilizarlas para reajustar el modelo.
+        </p>
+      </details>
+    </section>
+
+    <!-- VISOR -->
+    <section id="analisis">
+      <div class="eyebrow">EXPLORACIÓN DE IMÁGENES</div>
+
+      <h2>Selecciona un corte DCE</h2>
+
+      <p>
+        Elige un ejemplo incluido o carga las tres fases de una misma
+        paciente y altura. Cada archivo debe ser un PNG de 8 bits
+        en escala de grises, de 256 × 256 píxeles y hasta 2 MB.
+      </p>
+
+      <div class="study-picker">
+        <label for="example-select">
+          Ejemplos de entrenamiento
+          <select id="example-select">
+            <option value="">Elige paciente y corte…</option>
+          </select>
+        </label>
+
+        <p id="example-info" role="status" aria-live="polite">
+          Los ejemplos incluidos son de entrenamiento y no representan
+          una evaluación independiente.
+        </p>
+      </div>
+
+      <!-- app.js creará las tarjetas PRE, EARLY y LATE -->
+      <div class="uploads"></div>
+
+      <div id="feedback" role="status" aria-live="polite">
+        Esperando las tres fases del corte.
+      </div>
+
+      <div class="actions">
+        <button id="reset" class="secondary" type="button">
+          Limpiar estudio
+        </button>
+
+        <button id="predict" type="button" disabled>
+          Analizar respuesta <span aria-hidden="true">↗</span>
+        </button>
+      </div>
+
+      <div class="result">
+        <div>
+          <div class="eyebrow">PREDICCIÓN DE pCR</div>
+          <h3>Modelo pendiente de conexión</h3>
+
+          <p>
+            La revisión de imágenes estará disponible con los archivos
+            de JavaScript. La predicción permanecerá desactivada hasta
+            verificar el modelo ONNX y reproducir exactamente
+            el preprocesado del entrenamiento.
+          </p>
+
+          <p>
+            Una predicción de un único corte no equivale a la evaluación
+            completa de una paciente, que requiere agregar sus cortes.
+          </p>
+        </div>
+
+        <div class="placeholder">
+          —
+          <small>Puntuación de pCR=1</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- FUENTES -->
+    <section id="fuentes">
+      <div class="eyebrow">FUENTES Y AUTORÍA</div>
+
+      <h2>Un proyecto académico reproducible</h2>
+
+      <p>
+        Claudia Lozano Pérez · Aprendizaje Automático.
+        Datos del conjunto docente derivado de BreastDCEDL.
+      </p>
+
+      <p>
+        Fridman et al.:
+        <a
+          href="https://doi.org/10.1038/s41597-026-06589-6"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          BreastDCEDL: A standardized deep learning-ready breast
+          DCE-MRI dataset of 2,070 patients
+        </a>.
+        Scientific Data, 2026.
+      </p>
+
+      <p>
+        La comparación con otros trabajos debe tener en cuenta
+        las diferencias entre cohortes, modalidades de imagen,
+        variables clínicas y conjuntos de evaluación.
+      </p>
+    </section>
+
+    <footer>
+      <span>DCE / LAB · Proyecto académico</span>
+      <span>Uso educativo. Sin validez clínica.</span>
+    </footer>
+  </main>
+</body>
+</html>

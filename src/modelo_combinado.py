@@ -1,4 +1,4 @@
-"""Comparación exploratoria en validación: CNN congelada + HR/HER2/edad. Nunca carga test."""
+"""Comparación exploratoria en validación: CNN congelada + HR/HER2/edad/volumen. Nunca carga test."""
 import argparse
 import hashlib
 import json
@@ -22,9 +22,14 @@ import matplotlib.pyplot as plt
 import model3 as m
 import preprocessing as pp
 
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    classification_report,
+)
 
-VARIABLES_CLINICAS = ["HR", "HER2", "age"]
-VERSION = "hr_her2_edad_v2"
+
+VARIABLES_CLINICAS = ["HR", "HER2", "age", "tum_vol"]
+VERSION = "hr_her2_edad_volumen_f1_v3"
 
 
 def sha(path):
@@ -135,6 +140,9 @@ def main():
         clin[col] = pd.to_numeric(clin[col], errors='raise')
         if not clin[col].dropna().isin([0, 1]).all():
             raise ValueError(f'{col} debe ser 0, 1 o ausente; revisar codificación')
+    clin['tum_vol'] = pd.to_numeric(clin['tum_vol'], errors='raise')
+    if not np.isfinite(clin['tum_vol'].dropna()).all() or clin['tum_vol'].dropna().lt(0).any():
+        raise ValueError('Volumen no finito o negativo')
     tablas = {}
     for nombre, filas in [('train', tr), ('val', va)]:
         print(f'{nombre}: {filas.patient_id.nunique()} pacientes; dispositivo {dispositivo}', flush=True)
@@ -178,7 +186,19 @@ def main():
             resultados.append(dict(modelo=nombre, conjunto=conjunto, umbral=a.umbral, **met))
             pd.DataFrame(dict(patient_id=tabla.index, pCR=y, prob=prob)).to_csv(
                 salida / f'{nombre}_{conjunto}_pacientes.csv', index=False)
-            if conjunto == 'val':
+            if conjunto == 'val' and nombre == 'cnn_clinica':
+                informe = classification_report(
+                    y, (prob >= a.umbral).astype(int), labels=[0, 1],
+                    target_names=['pCR=0', 'pCR=1'], digits=4, zero_division=0)
+                (salida / 'cnn_clinica_con_volumen_metricas_val.txt').write_text(informe, encoding='utf-8')
+                reporte = classification_report(y, (prob >= a.umbral).astype(int),
+                    labels=[0, 1], output_dict=True, zero_division=0)
+                guardar(salida / 'cnn_clinica_con_volumen_f1_val.json', {
+                    'umbral': a.umbral, 'f1_pcr_0': reporte['0']['f1-score'],
+                    'f1_pcr_1': reporte['1']['f1-score'],
+                    'f1_macro': reporte['macro avg']['f1-score'],
+                    'f1_ponderado': reporte['weighted avg']['f1-score']})
+                print('\nCNN + HR + HER2 + edad + volumen · VALIDACIÓN\n' + informe)
                 fig, ax = plt.subplots(figsize=(5, 4))
                 matriz = np.array([[met['VN'], met['FP']], [met['FN'], met['VP']]])
                 ax.imshow(matriz, cmap='Blues')
@@ -203,6 +223,7 @@ def main():
         exclusiones='Mismas pacientes que en la validación original',
         test_consultado_por_este_script=False,
         limitacion='Experimento exploratorio posterior al test del modelo de imagen; no evaluación final independiente',
+        nota_volumen='Comparabilidad del volumen entre cohortes pendiente de aclarar',
         faltantes_train=tablas['train'][VARIABLES_CLINICAS].isna().sum().astype(int).to_dict(),
         faltantes_val=tablas['val'][VARIABLES_CLINICAS].isna().sum().astype(int).to_dict()))
     print(resumen.loc[resumen.conjunto.eq('val')].to_string(index=False))

@@ -1,0 +1,147 @@
+{
+  "experimento": "cnn5_relu_spatial_cv_f4",
+  "fecha": "2026-10-30T05:42:31",
+  "arquitectura": {
+    "version": "cinco_etapas_cinco_poolings_leakyrelu_v2",
+    "activacion": "LeakyReLU",
+    "negative_slope": 0.01,
+    "canales": [
+      16,
+      32,
+      64,
+      128,
+      128
+    ],
+    "dropout": 0.3,
+    "entrada": [
+      3,
+      256,
+      256
+    ],
+    "parametros": 245619,
+    "etapas": 5,
+    "max_poolings": 5,
+    "pooling_por_etapa": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "resolucion_final_hw": [
+      8,
+      8
+    ],
+    "representacion": "fases",
+    "canales_derivados": [
+      "PRE",
+      "EARLY",
+      "LATE"
+    ],
+    "atencion": "spatial",
+    "atencion_etapa": 4,
+    "atencion_resolucion_hw": [
+      32,
+      32
+    ],
+    "atencion_kernel": 7
+  },
+  "entrenamiento": {
+    "epocas_max": 30,
+    "epocas_realizadas": 13,
+    "mejor_epoca": 3,
+    "paciencia": 10,
+    "criterio_parada": "AUC por paciente en validación",
+    "perdida": "ponderada",
+    "pos_weight": 2.379737,
+    "optimizador": "AdamW",
+    "lr": 0.0003,
+    "weight_decay": 0.0001,
+    "dropout": 0.3,
+    "batch": 128,
+    "semilla": 42,
+    "fold_validacion": 4,
+    "aumento": "AumentoGeometrico(p_volteo=0.5, max_grados=10.0, max_desplazamiento=8)",
+    "preprocesado_espacial": {
+      "registrar": false,
+      "recortar": true,
+      "max_desplazamiento": 8,
+      "mejora_minima": 0.02,
+      "correlacion_minima": 0.4,
+      "margen": 12,
+      "roi": true,
+      "metodo_roi": "otsu",
+      "umbral_roi": 5,
+      "area_minima_roi": 64,
+      "normalizacion": "escala_comun",
+      "percentil_inferior": 1.0,
+      "percentil_superior": 99.5,
+      "clahe": false,
+      "clahe_clip": 1.5,
+      "clahe_tiles": 8
+    },
+    "preprocesado_config": "configs/roi_normalizacion.json",
+    "modo_rapido": false,
+    "agregacion_paciente": "media",
+    "umbral_curvas_recall_precision": 0.3,
+    "clase_positiva": "pCR=1",
+    "perdida_val_ponderada": false,
+    "evaluacion_train_por_epoca": true
+  },
+  "train_mejor_epoca": {
+    "auc": 0.621124,
+    "sensibilidad": 0.953668,
+    "recall": 0.953668,
+    "precision": 0.30798,
+    "especificidad": 0.100486,
+    "accuracy": 0.35274,
+    "f1": 0.465598,
+    "VP": 247,
+    "VN": 62,
+    "FP": 555,
+    "FN": 12
+  },
+  "validacion_mejor_epoca": {
+    "umbral_fijo": 0.3,
+    "metricas_umbral_fijo": {
+      "auc": 0.565954,
+      "sensibilidad": 0.951613,
+      "recall": 0.951613,
+      "precision": 0.296482,
+      "especificidad": 0.10828,
+      "accuracy": 0.347032,
+      "f1": 0.452107,
+      "VP": 59,
+      "VN": 17,
+      "FP": 140,
+      "FN": 3
+    },
+    "umbral_youden": 0.477516,
+    "con_umbral_youden": {
+      "auc": 0.565954,
+      "sensibilidad": 0.548387,
+      "recall": 0.548387,
+      "precision": 0.361702,
+      "especificidad": 0.617834,
+      "accuracy": 0.598174,
+      "f1": 0.435897,
+      "VP": 34,
+      "VN": 97,
+      "FP": 60,
+      "FN": 28
+    }
+  },
+  "entorno": {
+    "dispositivo": "cuda",
+    "gpu": "AMD Radeon RX 6700 XT",
+    "python": "3.12.14",
+    "torch": "2.14.1+rocm7.14",
+    "sistema": "Linux-7.0.0-38-generic-x86_64-desconocido-with-glibc2.43",
+    "segundos_entrenamiento": 932.910293
+  },
+  "pesos": {
+    "ruta": "models/cnn5_relu_spatial_cv_f4.pt",
+    "sha256": "be36350a83d32645f5d4ba2b5071509aec619571bd789ffcbb9af315db5cc29f"
+  },
+  "test": null
+}

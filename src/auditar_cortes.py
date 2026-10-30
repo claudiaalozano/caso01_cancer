@@ -1,4 +1,4 @@
-"""Auditoría visual y de intensidad por procedencia. No evalúa test."""
+"""Auditoría visual y de intensidad por procedencia."""
 
 import argparse
 import json

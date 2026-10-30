@@ -755,7 +755,7 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--rapido", action="store_true")
     parser.add_argument("--nombre", default=None)
-    parser.add_argument("--umbral", type=float, default=0.3)
+    parser.add_argument("--umbral", type=float, default=0.5)
     parser.add_argument("--verificar", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument(

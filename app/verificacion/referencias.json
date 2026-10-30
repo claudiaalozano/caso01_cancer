@@ -1,0 +1,153 @@
+{
+  "experimento": "cnn5_5pool_otsu_spatial_f1",
+  "onnx_sha256": "599920e3c9a2ddd8b128b0fccca438e228d41abf9626ad8927dfd2b87119f662",
+  "preprocesado": {
+    "registrar": false,
+    "recortar": true,
+    "max_desplazamiento": 8,
+    "mejora_minima": 0.02,
+    "correlacion_minima": 0.4,
+    "margen": 12,
+    "roi": true,
+    "metodo_roi": "otsu",
+    "umbral_roi": 5,
+    "area_minima_roi": 64,
+    "normalizacion": "escala_comun",
+    "percentil_inferior": 1.0,
+    "percentil_superior": 99.5,
+    "clahe": false,
+    "clahe_clip": 1.5,
+    "clahe_tiles": 8
+  },
+  "ejemplos": [
+    {
+      "ejemplo": "Breast_MRI_005_z025",
+      "fases": {
+        "PRE": "examples/Breast_MRI_005_z025_PRE.png",
+        "EARLY": "examples/Breast_MRI_005_z025_EARLY.png",
+        "LATE": "examples/Breast_MRI_005_z025_LATE.png"
+      },
+      "tensor": "verificacion/Breast_MRI_005_z025.bin",
+      "tensor_sha256": "cf2cc3ce0e7e7b471f411f256519d1e93673a200905d019cc24d6d2333aa835e",
+      "forma": [
+        1,
+        3,
+        256,
+        256
+      ],
+      "dtype": "float32",
+      "orden": "NCHW",
+      "pytorch": 0.18616877496242523,
+      "onnx": 0.1861690878868103,
+      "diferencia": 3.129243850708008e-07
+    },
+    {
+      "ejemplo": "Breast_MRI_005_z026",
+      "fases": {
+        "PRE": "examples/Breast_MRI_005_z026_PRE.png",
+        "EARLY": "examples/Breast_MRI_005_z026_EARLY.png",
+        "LATE": "examples/Breast_MRI_005_z026_LATE.png"
+      },
+      "tensor": "verificacion/Breast_MRI_005_z026.bin",
+      "tensor_sha256": "794f50bde05fe52bbe158170ba03b230104880fff9f16459f52723c9203168ca",
+      "forma": [
+        1,
+        3,
+        256,
+        256
+      ],
+      "dtype": "float32",
+      "orden": "NCHW",
+      "pytorch": 0.20795060694217682,
+      "onnx": 0.20795106887817383,
+      "diferencia": 4.6193599700927734e-07
+    },
+    {
+      "ejemplo": "ISPY1_1001_z017",
+      "fases": {
+        "PRE": "examples/ISPY1_1001_z017_PRE.png",
+        "EARLY": "examples/ISPY1_1001_z017_EARLY.png",
+        "LATE": "examples/ISPY1_1001_z017_LATE.png"
+      },
+      "tensor": "verificacion/ISPY1_1001_z017.bin",
+      "tensor_sha256": "49090835e9e9edbc8375dc25c5bbee247fbde9443fa8050b69105348dd2b4dc5",
+      "forma": [
+        1,
+        3,
+        256,
+        256
+      ],
+      "dtype": "float32",
+      "orden": "NCHW",
+      "pytorch": 0.03890351578593254,
+      "onnx": 0.03890353441238403,
+      "diferencia": 1.862645149230957e-08
+    },
+    {
+      "ejemplo": "ISPY1_1001_z018",
+      "fases": {
+        "PRE": "examples/ISPY1_1001_z018_PRE.png",
+        "EARLY": "examples/ISPY1_1001_z018_EARLY.png",
+        "LATE": "examples/ISPY1_1001_z018_LATE.png"
+      },
+      "tensor": "verificacion/ISPY1_1001_z018.bin",
+      "tensor_sha256": "a51841c29e088032827d91fc0e77b9d94d12fcb5ac88b8263afd48205614ae92",
+      "forma": [
+        1,
+        3,
+        256,
+        256
+      ],
+      "dtype": "float32",
+      "orden": "NCHW",
+      "pytorch": 0.04897427558898926,
+      "onnx": 0.04897439479827881,
+      "diferencia": 1.1920928955078125e-07
+    },
+    {
+      "ejemplo": "ISPY2-756412_z014",
+      "fases": {
+        "PRE": "examples/ISPY2-756412_z014_PRE.png",
+        "EARLY": "examples/ISPY2-756412_z014_EARLY.png",
+        "LATE": "examples/ISPY2-756412_z014_LATE.png"
+      },
+      "tensor": "verificacion/ISPY2-756412_z014.bin",
+      "tensor_sha256": "86232e1749e665a2d49a5773330e9d08a355227e8d470a0ef190adae11887453",
+      "forma": [
+        1,
+        3,
+        256,
+        256
+      ],
+      "dtype": "float32",
+      "orden": "NCHW",
+      "pytorch": 0.4868232309818268,
+      "onnx": 0.4868234395980835,
+      "diferencia": 2.086162567138672e-07
+    },
+    {
+      "ejemplo": "ISPY2-756412_z015",
+      "fases": {
+        "PRE": "examples/ISPY2-756412_z015_PRE.png",
+        "EARLY": "examples/ISPY2-756412_z015_EARLY.png",
+        "LATE": "examples/ISPY2-756412_z015_LATE.png"
+      },
+      "tensor": "verificacion/ISPY2-756412_z015.bin",
+      "tensor_sha256": "0a6fa56653f58abe18fb4888119ff6f31c327c9a2bfa6407fdc5a359aa2d92c1",
+      "forma": [
+        1,
+        3,
+        256,
+        256
+      ],
+      "dtype": "float32",
+      "orden": "NCHW",
+      "pytorch": 0.5070385932922363,
+      "onnx": 0.507038950920105,
+      "diferencia": 3.5762786865234375e-07
+    }
+  ],
+  "pytorch_onnx_python_verificados": true,
+  "navegador_verificado": false,
+  "nota": "Comprobación técnica de equivalencia, no evaluación del rendimiento."
+}

@@ -1164,3 +1164,101 @@ body > main .facts > article p {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Mantener las imágenes dentro de su visor */
+#uploads {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+#uploads .upload {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #101a2c;
+}
+
+#uploads .upload .preview {
+  position: relative !important;
+  display: grid;
+  place-items: center;
+  flex: 0 0 260px;
+  width: 100%;
+  height: 260px !important;
+  min-height: 260px;
+  overflow: hidden !important;
+  background: #050a12;
+}
+
+#uploads .upload .preview img {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  object-fit: contain !important;
+  transform: none !important;
+}
+
+#uploads .upload > label,
+#uploads .upload > input,
+#uploads .upload > .status {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  margin: 12px 16px;
+}
+
+#uploads .upload > input {
+  width: calc(100% - 32px);
+  max-width: 100%;
+}
+
+#uploads .status {
+  overflow-wrap: anywhere;
+}
+
+#explorar .model-setup {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#explorar .model-setup p {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#explorar .patient-identifiers {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#explorar .patient-identifiers label {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+#explorar .patient-identifiers input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #72eeee40;
+  border-radius: 8px;
+  background: #101a2c;
+  color: #edf3ff;
+}
+
+@media (max-width: 760px) {
+  #uploads,
+  #explorar .patient-identifiers {
+    grid-template-columns: 1fr;
+  }
+}

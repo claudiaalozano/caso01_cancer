@@ -1,0 +1,236 @@
+python - <<'PY'
+from pathlib import Path
+import re
+from datetime import datetime
+
+ruta = Path("app/inferencia_combinada.js")
+
+if not ruta.exists():
+    raise FileNotFoundError(
+        "No encuentro app/inferencia_combinada.js. "
+        "Ejecuta este bloque desde la carpeta caso01_cancer."
+    )
+
+original = ruta.read_text(encoding="utf-8")
+codigo = original
+
+# 1. Mostrar la clase predicha en el resultado por corte.
+patron = r'texto\(titulo,\s*"Puntuación de pCR=1 · corte "\s*\+\s*id\);'
+
+nuevo_titulo = '''
+texto(
+  titulo,
+  `Predicción del corte: pCR=${p >= config.umbral ? 1 : 0} · ${id}`
+);
+'''
+
+codigo, cambios_titulo = re.subn(
+    patron,
+    lambda _: nuevo_titulo.strip(),
+    codigo,
+    count=1,
+)
+
+if cambios_titulo == 0 and "Predicción del corte: pCR=" not in codigo:
+    raise ValueError(
+        "No encuentro el bloque esperado del resultado por corte. "
+        "No se ha modificado ningún archivo."
+    )
+
+# Añadir una explicación clara al resultado por corte.
+patron_explicacion = (
+    r'texto\(explicacion,\s*'
+    r'`Corte añadido a \$\{paciente\}.*?'
+    r'no una probabilidad clínica calibrada\."\s*\);'
+)
+
+nueva_explicacion = '''
+texto(
+  explicacion,
+  (p >= config.umbral
+    ? "Predice respuesta patológica completa tras el tratamiento. "
+    : "Predice que no se alcanzará respuesta patológica completa. ") +
+  `Puntuación de pCR=1: ${(p * 100).toFixed(2)} %. ` +
+  `Umbral: ${(config.umbral * 100).toFixed(0)} %. ` +
+  `Corte añadido a ${paciente}. ` +
+  "Este resultado corresponde a un corte. " +
+  "El resultado por paciente utiliza la media de los cortes aportados. " +
+  "La puntuación no indica cuánto cáncer hay. Uso educativo."
+);
+'''
+
+codigo = re.sub(
+    patron_explicacion,
+    lambda _: nueva_explicacion.strip(),
+    codigo,
+    count=1,
+    flags=re.S,
+)
+
+# 2. Preparar las tarjetas de resultados.
+marcador_inicio = "const faltantes=Object.entries(clinica)"
+inicio_busqueda = codigo.find(marcador_inicio)
+
+if inicio_busqueda < 0:
+    raise ValueError(
+        "No encuentro el bloque del resultado combinado. "
+        "No se ha modificado ningún archivo."
+    )
+
+fin = codigo.find(
+    'texto(estadoCombinado,"Comparación calculada',
+    inicio_busqueda,
+)
+
+if fin < 0:
+    raise ValueError(
+        "No encuentro el final del bloque combinado. "
+        "No se ha modificado ningún archivo."
+    )
+
+# Esta línea conserva el cálculo de los datos faltantes.
+fin_faltantes = codigo.find(";", inicio_busqueda) + 1
+
+if fin_faltantes <= inicio_busqueda:
+    raise ValueError("Bloque inesperado. No se ha modificado el archivo.")
+
+tarjetas = r'''
+    // Resultado visible de ambos modelos.
+    salidaCombinada.replaceChildren();
+
+    const tarjetasResultado = document.createElement("span");
+
+    tarjetasResultado.style.cssText = `
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin: 22px 0;
+    `;
+
+    function crearTarjetaResultado(nombre, valor, umbral) {
+      const clase = valor >= umbral ? 1 : 0;
+      const color = clase === 1 ? "#c6b3ff" : "#83eeee";
+
+      const tarjeta = document.createElement("span");
+
+      tarjeta.style.cssText = `
+        display: block;
+        padding: 24px;
+        border: 1px solid ${color};
+        border-radius: 18px;
+        background: #101a2c;
+      `;
+
+      const etiqueta = document.createElement("span");
+      etiqueta.textContent = nombre;
+
+      etiqueta.style.cssText = `
+        display: block;
+        margin-bottom: 14px;
+        color: #bcc9df;
+        font-size: 14px;
+      `;
+
+      const resultado = document.createElement("strong");
+      resultado.textContent = `Predicción: pCR=${clase}`;
+
+      resultado.style.cssText = `
+        display: block;
+        margin-bottom: 14px;
+        font-size: clamp(24px, 3vw, 36px);
+        line-height: 1.2;
+        color: ${color};
+      `;
+
+      const significado = document.createElement("span");
+
+      significado.textContent = clase === 1
+        ? "Predice respuesta patológica completa tras el tratamiento."
+        : "Predice que no se alcanzará respuesta patológica completa.";
+
+      significado.style.cssText = `
+        display: block;
+        margin-bottom: 16px;
+        color: #edf3ff;
+      `;
+
+      const puntuacionResultado = document.createElement("span");
+
+      puntuacionResultado.textContent =
+        `Puntuación de pCR=1: ${(valor * 100).toFixed(2)} %`;
+
+      puntuacionResultado.style.cssText = `
+        display: block;
+        color: #bcc9df;
+      `;
+
+      const umbralResultado = document.createElement("span");
+
+      umbralResultado.textContent =
+        `Umbral de decisión: ${(umbral * 100).toFixed(0)} %`;
+
+      umbralResultado.style.cssText = `
+        display: block;
+        margin-top: 8px;
+        color: #bcc9df;
+        font-size: 13px;
+      `;
+
+      tarjeta.append(
+        etiqueta,
+        resultado,
+        significado,
+        puntuacionResultado,
+        umbralResultado
+      );
+
+      return tarjeta;
+    }
+
+    tarjetasResultado.append(
+      crearTarjetaResultado(
+        "SOLO IMÁGENES · CNN",
+        pImagen,
+        config.umbral
+      ),
+      crearTarjetaResultado(
+        "CNN + DATOS CLÍNICOS",
+        p,
+        configCombinada.umbral
+      )
+    );
+
+    const notaResultado = document.createElement("span");
+
+    notaResultado.style.cssText = `
+      display: block;
+      margin-top: 16px;
+      line-height: 1.7;
+      color: #bcc9df;
+    `;
+
+    notaResultado.textContent =
+      `Paciente ${pacienteActivo} · ${numero} corte(s). ` +
+      (faltantes.length
+        ? `Datos imputados: ${faltantes.join(", ")}. `
+        : "") +
+      "Puntuaciones no calibradas: no indican el porcentaje de cáncer. " +
+      "Solo se incluyen los cortes aportados. Uso educativo.";
+
+    salidaCombinada.append(tarjetasResultado, notaResultado);
+
+    '''
+
+codigo = codigo[:fin_faltantes] + "\n" + tarjetas + codigo[fin:]
+
+# Guardar una copia antes de actualizar.
+fecha = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+copia = ruta.with_name(f"inferencia_combinada_backup_{fecha}.js")
+copia.write_text(original, encoding="utf-8")
+
+ruta.write_text(codigo, encoding="utf-8")
+
+print("Archivo actualizado:", ruta.resolve())
+print("Copia de seguridad:", copia.resolve())
+print("Ahora recarga la web con Ctrl + F5.")
+PY

@@ -1,0 +1,912 @@
+{
+  "config_preprocesado": {
+    "registrar": false,
+    "recortar": true,
+    "max_desplazamiento": 8,
+    "mejora_minima": 0.02,
+    "correlacion_minima": 0.4,
+    "margen": 12,
+    "roi": true,
+    "metodo_roi": "otsu",
+    "umbral_roi": 5,
+    "area_minima_roi": 64,
+    "normalizacion": "escala_comun",
+    "percentil_inferior": 1.0,
+    "percentil_superior": 99.5,
+    "clahe": false,
+    "clahe_clip": 1.5,
+    "clahe_tiles": 8
+  },
+  "criterio_seleccion": "Dos FP con mayor puntuación y dos FN con menor puntuación",
+  "advertencia": "Selección ilustrativa. La puntuación mostrada es por paciente, no una predicción individual del corte.",
+  "inferencia_repetida": false,
+  "cortes": [
+    {
+      "patient_id": "ISPY2-477816",
+      "sample_id": "ISPY2-477816_z026",
+      "tipo": "FP",
+      "figura": "FP_ISPY2-477816_z026.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            24,
+            0,
+            256,
+            256
+          ],
+          "tamano_recorte_hw": [
+            256,
+            232
+          ],
+          "tamano_redimensionado_hw": [
+            256,
+            232
+          ],
+          "padding_tblr": [
+            0,
+            0,
+            12,
+            12
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.05914306640625,
+          "fraccion_negra_despues": 0.140106201171875,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            60.0,
+            73.0,
+            75.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 12,
+          "fraccion_primer_plano": 0.2454376220703125,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY2-477816",
+      "sample_id": "ISPY2-477816_z040",
+      "tipo": "FP",
+      "figura": "FP_ISPY2-477816_z040.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            30,
+            0,
+            256,
+            256
+          ],
+          "tamano_recorte_hw": [
+            256,
+            226
+          ],
+          "tamano_redimensionado_hw": [
+            256,
+            226
+          ],
+          "padding_tblr": [
+            0,
+            0,
+            15,
+            15
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.052607218424479164,
+          "fraccion_negra_despues": 0.15545654296875,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            65.0,
+            81.0,
+            81.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 8,
+          "fraccion_primer_plano": 0.20513916015625,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY2-477816",
+      "sample_id": "ISPY2-477816_z045",
+      "tipo": "FP",
+      "figura": "FP_ISPY2-477816_z045.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            32,
+            0,
+            256,
+            256
+          ],
+          "tamano_recorte_hw": [
+            256,
+            224
+          ],
+          "tamano_redimensionado_hw": [
+            256,
+            224
+          ],
+          "padding_tblr": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.0533905029296875,
+          "fraccion_negra_despues": 0.16227213541666666,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            63.0,
+            80.0,
+            81.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 7,
+          "fraccion_primer_plano": 0.2078094482421875,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY2-658541",
+      "sample_id": "ISPY2-658541_z009",
+      "tipo": "FP",
+      "figura": "FP_ISPY2-658541_z009.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": null,
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            52.0,
+            113.0,
+            90.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 6,
+          "fraccion_primer_plano": 0.2176513671875,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY2-658541",
+      "sample_id": "ISPY2-658541_z018",
+      "tipo": "FP",
+      "figura": "FP_ISPY2-658541_z018.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            0,
+            0,
+            256,
+            255
+          ],
+          "tamano_recorte_hw": [
+            255,
+            256
+          ],
+          "tamano_redimensionado_hw": [
+            255,
+            256
+          ],
+          "padding_tblr": [
+            0,
+            1,
+            0,
+            0
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.08404541015625,
+          "fraccion_negra_despues": 0.08404541015625,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            42.0,
+            111.0,
+            90.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 5,
+          "fraccion_primer_plano": 0.311492919921875,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY2-658541",
+      "sample_id": "ISPY2-658541_z023",
+      "tipo": "FP",
+      "figura": "FP_ISPY2-658541_z023.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            0,
+            0,
+            256,
+            236
+          ],
+          "tamano_recorte_hw": [
+            236,
+            256
+          ],
+          "tamano_redimensionado_hw": [
+            236,
+            256
+          ],
+          "padding_tblr": [
+            10,
+            10,
+            0,
+            0
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.0912017822265625,
+          "fraccion_negra_despues": 0.11900838216145833,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            39.0,
+            112.0,
+            90.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 7,
+          "fraccion_primer_plano": 0.3103179931640625,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY1_1030",
+      "sample_id": "ISPY1_1030_z004",
+      "tipo": "FN",
+      "figura": "FN_ISPY1_1030_z004.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            1,
+            0,
+            256,
+            220
+          ],
+          "tamano_recorte_hw": [
+            220,
+            255
+          ],
+          "tamano_redimensionado_hw": [
+            221,
+            256
+          ],
+          "padding_tblr": [
+            17,
+            18,
+            0,
+            0
+          ],
+          "escala": 1.003921568627451,
+          "fraccion_negra_antes": 0.04937744140625,
+          "fraccion_negra_despues": 0.16470845540364584,
+          "nota": "Se amplía el campo conservado"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            55.0,
+            83.0,
+            86.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 2,
+          "fraccion_primer_plano": 0.283599853515625,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY1_1030",
+      "sample_id": "ISPY1_1030_z008",
+      "tipo": "FN",
+      "figura": "FN_ISPY1_1030_z008.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            0,
+            4,
+            256,
+            223
+          ],
+          "tamano_recorte_hw": [
+            219,
+            256
+          ],
+          "tamano_redimensionado_hw": [
+            219,
+            256
+          ],
+          "padding_tblr": [
+            18,
+            19,
+            0,
+            0
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.044667561848958336,
+          "fraccion_negra_despues": 0.16201273600260416,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            69.0,
+            93.0,
+            90.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 2,
+          "fraccion_primer_plano": 0.2503509521484375,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY1_1030",
+      "sample_id": "ISPY1_1030_z019",
+      "tipo": "FN",
+      "figura": "FN_ISPY1_1030_z019.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            0,
+            6,
+            256,
+            223
+          ],
+          "tamano_recorte_hw": [
+            217,
+            256
+          ],
+          "tamano_redimensionado_hw": [
+            217,
+            256
+          ],
+          "padding_tblr": [
+            19,
+            20,
+            0,
+            0
+          ],
+          "escala": 1.0,
+          "fraccion_negra_antes": 0.034413655598958336,
+          "fraccion_negra_despues": 0.15947977701822916,
+          "nota": "Sin ampliación: puede limitarse a recentrar el tejido"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            72.0,
+            96.0,
+            90.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 5,
+          "fraccion_primer_plano": 0.221588134765625,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY1_1058",
+      "sample_id": "ISPY1_1058_z003",
+      "tipo": "FN",
+      "figura": "FN_ISPY1_1058_z003.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            37,
+            0,
+            256,
+            243
+          ],
+          "tamano_recorte_hw": [
+            243,
+            219
+          ],
+          "tamano_redimensionado_hw": [
+            256,
+            231
+          ],
+          "padding_tblr": [
+            0,
+            0,
+            12,
+            13
+          ],
+          "escala": 1.0534979423868314,
+          "fraccion_negra_antes": 0.0333099365234375,
+          "fraccion_negra_despues": 0.1080780029296875,
+          "nota": "Se amplía el campo conservado"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            66.0,
+            85.0,
+            87.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 1,
+          "fraccion_primer_plano": 0.4449920654296875,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY1_1058",
+      "sample_id": "ISPY1_1058_z007",
+      "tipo": "FN",
+      "figura": "FN_ISPY1_1058_z007.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            35,
+            0,
+            256,
+            244
+          ],
+          "tamano_recorte_hw": [
+            244,
+            221
+          ],
+          "tamano_redimensionado_hw": [
+            256,
+            232
+          ],
+          "padding_tblr": [
+            0,
+            0,
+            12,
+            12
+          ],
+          "escala": 1.0491803278688525,
+          "fraccion_negra_antes": 0.031341552734375,
+          "fraccion_negra_despues": 0.10326131184895833,
+          "nota": "Se amplía el campo conservado"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            66.0,
+            87.0,
+            87.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 2,
+          "fraccion_primer_plano": 0.4340972900390625,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    },
+    {
+      "patient_id": "ISPY1_1058",
+      "sample_id": "ISPY1_1058_z012",
+      "tipo": "FN",
+      "figura": "FN_ISPY1_1058_z012.png",
+      "informe_espacial": {
+        "version": "roi_intensidad_v3_otsu",
+        "config": {
+          "registrar": false,
+          "recortar": true,
+          "max_desplazamiento": 8,
+          "mejora_minima": 0.02,
+          "correlacion_minima": 0.4,
+          "margen": 12,
+          "roi": true,
+          "metodo_roi": "otsu",
+          "umbral_roi": 5,
+          "area_minima_roi": 64,
+          "normalizacion": "escala_comun",
+          "percentil_inferior": 1.0,
+          "percentil_superior": 99.5,
+          "clahe": false,
+          "clahe_clip": 1.5,
+          "clahe_tiles": 8
+        },
+        "registro": {},
+        "recorte": {
+          "bbox_xyxy": [
+            36,
+            0,
+            256,
+            240
+          ],
+          "tamano_recorte_hw": [
+            240,
+            220
+          ],
+          "tamano_redimensionado_hw": [
+            256,
+            235
+          ],
+          "padding_tblr": [
+            0,
+            0,
+            10,
+            11
+          ],
+          "escala": 1.0666666666666667,
+          "fraccion_negra_antes": 0.028584798177083332,
+          "fraccion_negra_despues": 0.09126790364583333,
+          "nota": "Se amplía el campo conservado"
+        },
+        "advertencia": "Diagnóstico heurístico; no certifica alineación anatómica.",
+        "roi": {
+          "metodo": "otsu",
+          "umbrales_otsu": [
+            66.0,
+            87.0,
+            87.0
+          ],
+          "alertas": [],
+          "umbral": null,
+          "area_minima": 64,
+          "componentes_conservadas": 2,
+          "fraccion_primer_plano": 0.412078857421875,
+          "advertencia": "Estimación heurística: no localiza el tumor. Revisar que conserva el tejido relevante.",
+          "motivo": "Caja propuesta mediante umbral y componentes"
+        }
+      },
+      "informe_intensidad": {
+        "normalizacion": "escala_comun",
+        "clahe": false,
+        "limite_comun_01": 1.0,
+        "fraccion_saturada": 0.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+name: Publicar web
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "app/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Comprobar archivos de la web
+        run: |
+          test -f app/index.html
+          test -f app/models/modelo_config.json
+
+      - name: Descargar modelo del release
+        run: |
+          mkdir -p app/models
+
+          curl --fail --location \
+            --retry 3 \
+            --connect-timeout 20 \
+            --max-time 180 \
+            "https://github.com/claudiaalozano/caso01_cancer/releases/download/modelo-v1/cnn_pcr.onnx" \
+            --output app/models/cnn_pcr.onnx
+
+      - name: Verificar el modelo
+        run: |
+          echo "599920e3c9a2ddd8b128b0fccca438e228d41abf9626ad8927dfd2b87119f662  app/models/cnn_pcr.onnx" | sha256sum --check
+
+      - name: Preparar la web
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: app
+
+      - name: Publicar
+        id: deployment
+        uses: actions/deploy-pages@v4

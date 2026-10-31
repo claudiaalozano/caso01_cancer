@@ -672,6 +672,40 @@ actualizarVisor();
   const CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${VERSION}/dist/`;
   const texto = (el, v) => { el.textContent = v; };
 
+  // Rótulo visible: distingue la clase predicha de la puntuación del modelo.
+  function actualizarEtiquetaCorte(clase = null, umbral = null) {
+    const contenedor = puntuacion.parentElement;
+    if (!contenedor) return;
+    let etiqueta = contenedor.querySelector("small");
+    if (!etiqueta) {
+      etiqueta = document.createElement("small");
+      contenedor.append(etiqueta);
+    }
+    etiqueta.textContent = clase === null
+      ? "Puntuación de respuesta completa · no calibrada"
+      : `Predicción del corte: pCR=${clase} · Umbral ${(umbral * 100).toFixed(0)} % · Puntuación no calibrada`;
+  }
+
+  function mostrarResultadoCorte(p, id, paciente, tiempoMs) {
+    const clase = p >= config.umbral ? 1 : 0;
+    texto(puntuacion, (100 * p).toFixed(2) + " %");
+    texto(titulo, `Predicción del corte: pCR=${clase} · corte ${id}`);
+    actualizarEtiquetaCorte(clase, config.umbral);
+    texto(explicacion,
+      (clase === 1
+        ? "Predice respuesta patológica completa tras el tratamiento. "
+        : "Predice que no se alcanzará respuesta patológica completa tras el tratamiento. ") +
+      `Puntuación de respuesta completa: ${(100 * p).toFixed(2)} %. ` +
+      `Umbral: ${(100 * config.umbral).toFixed(0)} %. ` +
+      `Corte añadido a ${paciente}. Preprocesado e inferencia: ${tiempoMs.toFixed(0)} ms. ` +
+      "Este resultado es de un corte; el resultado por paciente utiliza la media de los cortes aportados. " +
+      "La puntuación no mide cuánto cáncer hay y no es una probabilidad clínica calibrada."
+    );
+  }
+
+  actualizarEtiquetaCorte();
+
+
   async function obtener(ruta, tipo="json") {
     const control = new AbortController();
     const tiempo = setTimeout(() => control.abort(), 20000);
@@ -767,6 +801,7 @@ actualizarVisor();
     corteInput.value=ids?.corte||"";
     pacienteInput.readOnly=!!ids;corteInput.readOnly=!!ids;
     texto(puntuacion,"—");
+    actualizarEtiquetaCorte();
     texto(titulo,verificado ? "Listo para analizar un corte" : "Modelo sin verificar en este navegador");
     if(entrada) {
       try {
@@ -1011,6 +1046,7 @@ botonCombinado.addEventListener("click",async()=>{
       if(!paciente||!id) throw Error("Indica el identificador de paciente y de corte para agrupar correctamente.");
       if(pacienteActivo&&paciente!==pacienteActivo) throw Error("Ya hay cortes de otra paciente. Pulsa «Vaciar paciente» antes de cambiar.");
       texto(titulo,"Procesando el corte…");
+      actualizarEtiquetaCorte();
       const inicio=performance.now();
       const {datos,informe}=PreprocesadoDCE.procesar(entrada.fases,config.preprocesado);
       const p=await predecir(datos);
@@ -1022,18 +1058,10 @@ botonCombinado.addEventListener("click",async()=>{
       pacienteActivo=paciente;
       invalidarCombinado();
       cortes.set(id,{probabilidad:p,nombres:entrada.nombres.slice(),informe,tiempo_ms:performance.now()-inicio,fases:entrada.fases.map(f=>f.slice())});
-      texto(puntuacion,(100*p).toFixed(2)+" %");
-      texto(
-  titulo,
-  `Predicción del corte: pCR=${p >= config.umbral ? 1 : 0} · corte ${id}`
-);
-      texto(explicacion,
-        `Corte añadido a ${paciente}. Preprocesado e inferencia: ${(performance.now()-inicio).toFixed(0)} ms. `+
-        "La salida es una puntuación del modelo, no una probabilidad clínica calibrada."
-      );
+      mostrarResultadoCorte(p, id, paciente, performance.now() - inicio);
       dibujarPaciente();
     } catch(error) {
-      texto(titulo,"No se ha analizado el corte");texto(explicacion,error.message);texto(puntuacion,"—");
+      texto(titulo,"No se ha analizado el corte");texto(explicacion,error.message);texto(puntuacion,"—");actualizarEtiquetaCorte();
     } finally {ocupado=false;actualizarBoton();dibujarPaciente();}
   });
 
